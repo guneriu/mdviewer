@@ -135,6 +135,65 @@ extension M0Integration {
         try check(abs(restored - (anchor["top"] as! Double)) < 5,
                   "inserting 50 blocks above preserves visible content within 5 px")
         try await testLateImageAnchors(host, root: root, original: original)
+        try await render(host, source: original, root: root)
+        _ = try await js(host, "scrollTo(0, 900); return true")
+        try await Task.sleep(nanoseconds: 80_000_000)
+        let deleted = try await js(host, """
+            const nodes = [...document.querySelector('#document').children];
+            const i = nodes.findIndex(n => n.getBoundingClientRect().bottom > 0);
+            return { text: nodes[i].textContent, previous: nodes[i-1].textContent,
+                     top: nodes[i-1].getBoundingClientRect().top };
+            """) as! [String: Any]
+        let withoutAnchor = original.replacingOccurrences(of: "\(deleted["text"]!)\n\n", with: "")
+        try await render(host, source: prefix + withoutAnchor, root: root)
+        let previousTop = try await js(host, "return [...document.querySelector('#document').children].find(n => n.textContent === text).getBoundingClientRect().top", arguments: ["text": deleted["previous"]!]) as! Double
+        try check(abs(previousTop - (deleted["top"] as! Double)) < 5, "deleted visible anchor restores predecessor to its own saved offset within 5 px")
+
+        let duplicates = (0..<300).map { _ in "Repeated paragraph\n\n" }.joined()
+        for offset in [900, 1800] {
+            try await render(host, source: duplicates, root: root)
+            _ = try await js(host, "scrollTo(0, offset); return true", arguments: ["offset": offset])
+            try await Task.sleep(nanoseconds: 80_000_000)
+            let duplicate = try await js(host, """
+                const nodes = [...document.querySelector('#document').children];
+                const i = nodes.findIndex(n => n.getBoundingClientRect().bottom > 0);
+                return { index: i, top: nodes[i].getBoundingClientRect().top };
+                """) as! [String: Any]
+            try await render(host, source: prefix + duplicates, root: root)
+            let top = try await js(host, "return document.querySelector('#document').children[index + 50].getBoundingClientRect().top", arguments: ["index": duplicate["index"]!]) as! Double
+            try check(abs(top - (duplicate["top"] as! Double)) < 5, "unchanged duplicate occurrence at \(offset) anchors independently within 5 px")
+        }
+        try await render(host, source: prefix, root: root)
+        let bounded = try await js(host, "return scrollY >= 0 && scrollY <= Math.max(0, document.documentElement.scrollHeight - innerHeight)") as? Bool
+        try check(bounded == true, "replacing all old blocks keeps pixel fallback within bounds")
+        try await render(host, source: "Short paragraph", root: root)
+        let short = try await js(host, "return scrollY === 0") as? Bool
+        try check(short == true, "long-to-short replacement clamps scroll to zero")
+
+        try await render(host, source: original, root: root)
+        _ = try await js(host, "scrollTo(0, 900); return true")
+        try await Task.sleep(nanoseconds: 80_000_000)
+        _ = try await js(host, """
+            window.staleAnchor = [...document.querySelector('#document').children].find(n => n.getBoundingClientRect().bottom > 0);
+            window.staleAnchorTop = window.staleAnchor.getBoundingClientRect().top;
+            window.savedStage = window.stageMarkdown;
+            window.stageMarkdown = (...args) => {
+              const staged = window.savedStage(...args);
+              return new Promise(resolve => window.releaseAnchorStage = () => resolve(staged));
+            };
+            return true;
+            """)
+        let stale = Task { try await render(host, source: "Stale blocks", root: root) }
+        try await waitUntil("staged anchor invalidation") { try await js(host, "return typeof window.releaseAnchorStage === 'function'") as? Bool == true }
+        _ = host.invalidate()
+        _ = try await js(host, "window.stageMarkdown = window.savedStage; window.releaseAnchorStage(); return true")
+        _ = await stale.result
+        let untouched = try await js(host, "return window.staleAnchor.isConnected && Math.abs(window.staleAnchor.getBoundingClientRect().top - window.staleAnchorTop) < 5") as? Bool
+        try check(untouched == true, "invalidated staged render changes neither visible blocks nor geometry")
+        try await render(host, source: prefix + original, root: root)
+        let staleRestored = try await js(host, "return [...document.querySelector('#document').children].find(n => n.textContent === window.staleAnchor.textContent).getBoundingClientRect().top - window.staleAnchorTop") as! Double
+        try check(abs(staleRestored) < 5, "invalidated staged render leaves committed anchor identities unchanged")
+        _ = try await js(host, "delete window.staleAnchor; return true")
     }
 
     static func testLateImageAnchors(_ host: RenderHost, root: URL, original: String) async throws {
