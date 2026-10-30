@@ -1,5 +1,80 @@
 # MDViewer verification evidence — implementation continuation
 
+## Image auto-refresh review corrections — isolated gate (2026-10-30)
+
+**PASS: 28 Swift tests / 6 suites, 163 WebKit checks in both debug and release,
+and 44 watcher checks in eight process-timeout-bounded scenarios.** This gate
+supersedes the original image-refresh counts below, not its actual-app/Launch
+Services limitations. No app launch, installation, registration, network access
+or default-handler change was performed. `MDVIEWER_M0_ALLOW_LAUNCH_SERVICES` stayed
+unset. Python commands used `PYTHONDONTWRITEBYTECODE=1`.
+
+### Review regressions and evidence
+
+- **P1:** `img/../a.png` again produces an image resource and contained trigger;
+  `../outside.png`, `img/../../outside.png` and missing escaping variants produce
+  neither. A contained missing `img/../missing.png` remains a trigger only.
+  The failing test recorded three assertions before restoring v1 standardization
+  behavior. All no-follow, nonblocking, regular-file and descriptor-path containment
+  checks remain in place.
+- **P2a:** deterministic native tests inject a newly referenced image event between
+  batch read and current path publication, on both first render and a later render
+  whose previous set is empty. Both timed out before the fix; both now complete
+  exactly one additional debounced render, then remain quiet for 350 ms. A single
+  pending bit conservatively records in-root non-source events/loss flags during
+  rendering, without retaining paths or opening them. Publishing a nonempty current
+  set consumes it. Empty commits, cancelled/failed current renders and stop clear
+  it; unit checks also exclude exact-source/outside events and repeated replay.
+- **P2b:** internal operation spies wrap actual C stream calls and assert ordered
+  Stop → Invalidate → Release exactly once on explicit stop, owner deinit and
+  repeated session close. The live-stream count reaches zero after close even
+  while the watcher object remains retained. The initial spy tests failed to
+  compile before the internal injection seam was added; the final tests pass.
+- **P2c:** both real-event and WebKit probes now use `!= false` for optional volume
+  case sensitivity, matching the product's sensitive-when-unknown rule. A source
+  expression check failed before the two-line correction and passed afterward;
+  real-event and browser suites also pass. This fixture volume is case-insensitive;
+  unknown/case-sensitive real volumes were not newly exercised.
+- **Approved validation follow-up:** the first final native run exposed the original
+  hard-link fixture's `F_GETPATH` alias ambiguity: referenced `a.png` was recorded
+  as same-inode `hard.png`. Cap/budget assertions now use an independent unlinked
+  `cap.png`, retaining original hard-link coverage. A separate one-line correction
+  records the already policy-resolved reference spelling, **after the unchanged
+  descriptor checks**, rather than whichever alias `F_GETPATH` selects. This also
+  preserves atomic-replacement triggers for each referenced hard-link spelling.
+  New per-reference/rewrite and combined hard-link assertions pass; image bytes
+  remain inode-deduplicated. The new hard-link test also passed before the fix
+  because alias selection is intermittent; the captured original assertion failure
+  is the observed red evidence, not a claimed deterministic red of the new test.
+
+Ignored local evidence lives in `.build/image-refresh-review-evidence/`: P1/P2a/P2b
+red and green logs, P2c source-check logs, the captured hard-link failure excerpt
+(`hard-link-observed-red.txt`), and the final full gate logs. Evidence is not promised
+in a fresh checkout. No timing threshold or debounce was increased. Final native
+image timings were **0.264–0.268 s**; the 12 browser image mutations each stayed below
+1 s and settled at exactly one completed render after 500 ms quiet (**0.261–0.269 s
+debug**, **0.258–0.268 s release**). These are isolated local-disk measurements.
+
+### Final commands and summary lines
+
+| Command | Final result |
+| --- | --- |
+| `bash scripts/test-swift.sh` | `Test run with 28 tests in 6 suites passed`. |
+| `swift build --build-system swiftbuild --product M0Integration` | `Build complete!` — isolated probe only. |
+| `python3 scripts/test-watchers.py "$(swift build --build-system swiftbuild --show-bin-path)/M0Integration"` | `PASS 8 process-timeout-bounded watcher scenarios / 44 checks`. |
+| `bash scripts/test-webkit.sh` | `M0-M4 WEBKIT INTEGRATION PASSED: 163 checks`; `M0 NON-LAUNCH-SERVICES CHECKS PASSED` (embedded 28 Swift tests / 6 suites / 44 watcher checks). |
+| `CONFIGURATION=release bash scripts/test-webkit.sh` | Same `163` WebKit checks and non-Launch-Services PASS, with the same embedded native/watcher counts. |
+| `npm test` | `PASS 4 asset SHA-256 records, 12 locked production-package/license records, offline shell/CSS and 2 byte-identical regenerations`; final `PASS reference syntax, 6 advisory timing cases and 1 single-block hashing case (5s child timeout, 4s ceiling)`. |
+| `python3 scripts/verify_assets.py` | `PASS node-free vendored/packaged asset SHA-256/size/allowlist/notices verification`. |
+| `python3 scripts/test-packaging.py` | `PASS release signature/resources, 3 tamper rejections, 4 install guards, dry-run without Applications creation, shell syntax`. No mutating install branch executed. |
+| `git diff --check` | PASS; no changed shell scripts. |
+
+**Remaining scope:** an unrelated in-root event during rendering can conservatively
+cause one replay when the new set is nonempty. The earlier scroll-cancel flake is
+not claimed fixed (both fresh full gates passed on their first run). Slow volumes,
+root-directory rebinding, real-app UI, human accessibility/multiwindow checks,
+installer mutation and Launch Services acceptance remain outside this gate.
+
 ## Referenced image auto-refresh — isolated gate (2026-10-30)
 
 **PASS: 24 Swift tests / 6 suites, 163 real-WebKit checks in both debug and
