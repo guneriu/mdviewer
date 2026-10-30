@@ -24,3 +24,14 @@ img { max-width: 100%; height: auto; }
 .hljs-number,.hljs-title,.hljs-built_in { color: #0550ae; }
 .hljs-comment { color: var(--muted); font-style: italic; }
 @media (prefers-color-scheme: dark) { .hljs-keyword,.hljs-selector-tag,.hljs-literal { color: #d2a8ff; } .hljs-string,.hljs-attr { color: #a5d6ff; } .hljs-number,.hljs-title,.hljs-built_in { color: #79c0ff; } }
+
+@keyframes changed-flash {
+  from { background-color: var(--changed-highlight); }
+  to { background-color: transparent; }
+}
+:root { --changed-highlight: #ffe599; }
+@media (prefers-color-scheme: dark) { :root { --changed-highlight: #66551a; } }
+.changed-flash { animation: changed-flash 1.2s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .changed-flash { animation: none; background-color: var(--changed-highlight); }
+}

@@ -195,8 +195,8 @@
   "assets": [
     {
       "path": "Resources/Web/renderer.js",
-      "bytes": 203827,
-      "sha256": "3af78963fa88c05d74976561cd73a2548abfeebcccb9a1100e97c925cf6184f1"
+      "bytes": 204393,
+      "sha256": "98e33b7e18f48756c31e17086318c0f8d2141c77765583d7511a2ec1a8f606d3"
     },
     {
       "path": "Resources/Web/shell.html",
@@ -205,8 +205,8 @@
     },
     {
       "path": "Resources/Web/styles.css",
-      "bytes": 2130,
-      "sha256": "a18c1e119a28fca88e4a3a739d6bda012cefa4e246d48137324bd40c5bc2d512"
+      "bytes": 2560,
+      "sha256": "8ca43f85dd78fde9f07e09ca3c2ea7043b6b7b60264aa91e89e95e9fcb93d9c9"
     },
     {
       "path": "Resources/Notices/THIRD_PARTY_NOTICES.md",

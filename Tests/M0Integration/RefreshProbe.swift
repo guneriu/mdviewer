@@ -114,6 +114,7 @@ extension M0Integration {
         try check(position > 0 && abs(restored - position) < 5, "successful refresh preserves practical scroll offset")
         try check(!host.gateway.containsCapability(retainedImage), "successful replacement retires previous committed image capabilities")
         try await testContentAnchors(host, root: root)
+        try await testFollowChanges(host, root: root)
     }
 
     static func testContentAnchors(_ host: RenderHost, root: URL) async throws {
@@ -194,6 +195,76 @@ extension M0Integration {
         let staleRestored = try await js(host, "return [...document.querySelector('#document').children].find(n => n.textContent === window.staleAnchor.textContent).getBoundingClientRect().top - window.staleAnchorTop") as! Double
         try check(abs(staleRestored) < 5, "invalidated staged render leaves committed anchor identities unchanged")
         _ = try await js(host, "delete window.staleAnchor; return true")
+    }
+
+    static func testFollowChanges(_ host: RenderHost, root: URL) async throws {
+        let paragraphs = (0..<300).map { "Follow paragraph \($0)\n\n" }
+        let original = paragraphs.joined()
+        for enabled in [false, true] {
+            _ = try await js(host, "window.setFollowChanges(enabled); return true", arguments: ["enabled": enabled])
+            for kind in ["edit", "insert", "delete", "unchanged"] {
+                try await render(host, source: original, root: root)
+                _ = try await js(host, "scrollTo(0, 900); return true")
+                try await Task.sleep(nanoseconds: 80_000_000)
+                _ = try await js(host, "window.followAnchor = [...document.querySelector('#document').children].find(n => n.getBoundingClientRect().bottom > 0).textContent; window.followTop = [...document.querySelector('#document').children].find(n => n.textContent === window.followAnchor).getBoundingClientRect().top; return true")
+                let changed: String
+                switch kind {
+                case "edit": changed = paragraphs.dropLast().joined() + "Edited final paragraph"
+                case "insert": changed = original + "Inserted final paragraph"
+                case "delete": changed = paragraphs.dropLast().joined()
+                default: changed = original
+                }
+                try await render(host, source: changed, root: root)
+                let result = try await js(host, """
+                    const nodes = [...document.querySelector('#document').children];
+                    const last = nodes.at(-1), rect = last.getBoundingClientRect();
+                    return { visible: rect.bottom > 0 && rect.top < innerHeight,
+                      flash: !!document.querySelector('.changed-flash'),
+                      offset: nodes.find(n => n.textContent === window.followAnchor).getBoundingClientRect().top - window.followTop };
+                    """) as! [String: Any]
+                if enabled && kind != "unchanged" {
+                    try check(result["visible"] as? Bool == true && result["flash"] as? Bool == true, "Follow Changes on follows and highlights offscreen \(kind)")
+                } else {
+                    try check(abs(result["offset"] as! Double) < 5 && result["flash"] as? Bool == false, "Follow Changes \(enabled ? "unchanged" : "off " + kind) preserves anchor without flash")
+                }
+            }
+        }
+        try await render(host, source: original + "Flash expiry", root: root)
+        try await waitUntil("flash removed after 1.2 seconds") { try await js(host, "return !document.querySelector('.changed-flash')") as? Bool == true }
+        try check(true, "changed-flash class is removed within bounded wait after 1.2 seconds")
+
+        let fresh = try RenderHost(resourceDirectory: Bundle.main.resourceURL!.appendingPathComponent("Web"))
+        defer { fresh.close() }
+        fresh.webView.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+        fresh.load()
+        try await waitUntil("first-render host ready") { fresh.isReady }
+        _ = try await js(fresh, "window.setFollowChanges(true); return true")
+        try await render(fresh, source: original, root: root)
+        let first = try await js(fresh, "return scrollY === 0 && !document.querySelector('.changed-flash')") as? Bool
+        try check(first == true, "first render never follows or highlights")
+
+        // The probe delays a fresh image capability and grows its layout before the load event.
+        try await render(host, source: "![late](pixel.png)\n\n" + original, root: root)
+        _ = try await js(host, "scrollTo(0, 900); return true")
+        try await Task.sleep(nanoseconds: 80_000_000)
+        _ = try await js(host, """
+            window.followImageDone = false;
+            window.followCommit = window.commitMarkdown;
+            window.commitMarkdown = generation => {
+              const accepted = window.followCommit(generation);
+              const image = document.querySelector('#document img'), url = image.src;
+              image.removeAttribute('src');
+              image.addEventListener('load', () => window.followImageDone = true, {once:true});
+              setTimeout(() => { image.height = 1600; image.src = url; }, 150);
+              return accepted;
+            };
+            return true;
+            """)
+        try await render(host, source: "![late](pixel.png)\n\n" + paragraphs.dropLast().joined() + "Late image changed end", root: root)
+        try await waitUntil("followed late image") { try await js(host, "return window.followImageDone") as? Bool == true }
+        let followed = try await js(host, "const n = document.querySelector('#document').lastElementChild, r = n.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight") as? Bool
+        try check(followed == true, "late image settles the followed block rather than the pre-follow anchor")
+        _ = try await js(host, "window.commitMarkdown = window.followCommit; window.setFollowChanges(false); return true")
     }
 
     static func testLateImageAnchors(_ host: RenderHost, root: URL, original: String) async throws {

@@ -39,6 +39,8 @@ const shell = await readFile('Resources/Web/shell.html', 'utf8');
 const css = await readFile('Resources/Web/styles.css', 'utf8');
 assert.ok(!/(?:src|href)=["']https?:/i.test(shell));
 assert.ok(!/@import|url\(/i.test(css));
+assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\.changed-flash\s*\{\s*animation:\s*none;/,
+  'reduced motion disables the changed-block animation');
 for (let run = 1; run <= 2; run++) {
   const build = spawnSync(process.execPath, ['scripts/build-renderer.mjs'], { encoding: 'utf8', timeout: 30000 });
   assert.equal(build.error, undefined);

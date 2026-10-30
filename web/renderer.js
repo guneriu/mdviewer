@@ -78,6 +78,21 @@ function clampScroll(x, y) {
 function restoreAnchor(anchor, position) {
   clampScroll(position.x, anchor ? scrollY + anchor.node.getBoundingClientRect().top - anchor.top : position.y);
 }
+function firstChangedIndex(before, after) {
+  let i = 0;
+  while (i < before.length && i < after.length && before[i].key === after[i].key) i++;
+  return i === before.length && i === after.length ? -1 : Math.min(i, after.length - 1);
+}
+let followChanges = false;
+window.setFollowChanges = enabled => { followChanges = enabled === true; };
+let flashNode = null;
+let flashTimer = null;
+function clearFlash() {
+  clearTimeout(flashTimer);
+  flashNode?.classList.remove('changed-flash');
+  flashNode = null;
+  flashTimer = null;
+}
 let committedBlocks = [];
 let stopSettling = () => {};
 function settleImages(container, generation, anchor, position) {
@@ -184,6 +199,8 @@ window.stageMarkdown = (source, images, links, generation) => {
 window.commitMarkdown = generation => {
   if (generation !== currentGeneration || pendingDOM?.generation !== generation) return false;
   stopSettling();
+  clearFlash();
+  const changedIndex = committedBlocks.length ? firstChangedIndex(committedBlocks, pendingDOM.blocks) : -1;
   const position = { x: scrollX, y: scrollY };
   const oldGeometry = committedBlocks.map(({ node, key }) => {
     const rect = node.getBoundingClientRect();
@@ -205,6 +222,17 @@ window.commitMarkdown = generation => {
   committedBlocks = pendingDOM.blocks;
   pendingDOM = null;
   restoreAnchor(anchor, position);
+  if (followChanges && changedIndex >= 0) {
+    const node = committedBlocks[changedIndex].node;
+    const rect = node.getBoundingClientRect();
+    if (rect.bottom <= 0 || rect.top >= innerHeight) {
+      node.scrollIntoView({ block: 'center' });
+      node.classList.add('changed-flash');
+      flashNode = node;
+      flashTimer = setTimeout(clearFlash, 1200);
+      anchor = { node, top: node.getBoundingClientRect().top };
+    }
+  }
   settleImages(container, generation, anchor, position);
   return true;
 };
