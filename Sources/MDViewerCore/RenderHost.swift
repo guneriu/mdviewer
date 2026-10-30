@@ -23,6 +23,44 @@ public final class RenderHost: NSObject, WKNavigationDelegate, WKUIDelegate {
     private var closed = false
     private var loadingShell = false
     private var shellEpoch = 0
+    private var followChanges = false
+    private var applyingFollowChangesEpoch: Int?
+
+    public func setFollowChanges(_ enabled: Bool) {
+        followChanges = enabled
+        guard isReady, !closed else { return }
+        applyFollowChanges(epoch: shellEpoch)
+    }
+
+    private func applyFollowChanges(epoch: Int) {
+        guard !closed, shellEpoch == epoch, applyingFollowChangesEpoch == nil else { return }
+        let applied = followChanges
+        applyingFollowChangesEpoch = epoch
+        webView.callAsyncJavaScript("await window.setFollowChanges(enabled); return true",
+            arguments: ["enabled": applied], in: nil, in: .page) { [weak self] result in
+            guard let self, !self.closed, self.shellEpoch == epoch,
+                  self.applyingFollowChangesEpoch == epoch else { return }
+            self.applyingFollowChangesEpoch = nil
+            switch result {
+            case .failure(let error):
+                self.shellFailed(error)
+            case .success:
+                if self.followChanges != applied {
+                    self.applyFollowChanges(epoch: epoch)
+                    return
+                }
+                if !self.isReady {
+                    self.isReady = true
+                    self.loadingShell = false
+                    let pending = self.pendingRender
+                    self.pendingRender = nil
+                    self.cancelPending = nil
+                    pending?()
+                    self.onReady?()
+                }
+            }
+        }
+    }
 
     public init(resourceDirectory: URL, diagnostics: Bool = false) throws {
         gateway = try AssetGateway(resourceDirectory: resourceDirectory, diagnostics: diagnostics)
@@ -44,6 +82,7 @@ public final class RenderHost: NSObject, WKNavigationDelegate, WKUIDelegate {
     private func loadShell() {
         guard !closed, !loadingShell else { return }
         isReady = false; loadingShell = true; shellEpoch += 1
+        applyingFollowChangesEpoch = nil
         let epoch = shellEpoch
         let rules = #"[{"trigger":{"url-filter":"^[a-zA-Z][a-zA-Z0-9+.-]*:","url-filter-is-case-sensitive":false},"action":{"type":"block"}},{"trigger":{"url-filter":"^mdviewer://"},"action":{"type":"ignore-previous-rules"}}]"#
         WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "MDViewer-DenyNetwork-M0", encodedContentRuleList: rules) { [weak self] list, error in
@@ -143,6 +182,7 @@ public final class RenderHost: NSObject, WKNavigationDelegate, WKUIDelegate {
     public func close() {
         guard !closed else { return }
         closed = true; isReady = false; loadingShell = false; shellEpoch += 1
+        applyingFollowChangesEpoch = nil
         invalidate(); webView.stopLoading(); gateway.retireImages()
         linkTargets.removeAll(); committedLinks.removeAll(); linkStages.removeAll()
         onReady = nil; onFailure = nil; onLink = nil; onRecovery = nil
@@ -161,12 +201,11 @@ public final class RenderHost: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard !closed else { return }
-        isReady = true; loadingShell = false
-        let pending = pendingRender; pendingRender = nil; cancelPending = nil
-        pending?(); onReady?()
+        applyFollowChanges(epoch: shellEpoch)
     }
     private func shellFailed(_ error: Error) {
         guard !closed, (error as NSError).code != NSURLErrorCancelled else { return }
+        applyingFollowChangesEpoch = nil
         isReady = false; loadingShell = false; onFailure?(error)
     }
     public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { shellFailed(error) }
@@ -175,6 +214,7 @@ public final class RenderHost: NSObject, WKNavigationDelegate, WKUIDelegate {
     public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         guard !closed else { return }
         isReady = false; loadingShell = false; shellEpoch += 1
+        applyingFollowChangesEpoch = nil
         invalidate(); gateway.retireImages()
         linkTargets.removeAll(); committedLinks.removeAll(); linkStages.removeAll()
         guard contentProcessRecoveries < 2 else { onFailure?(ViewerError.contentProcessTerminated); return }

@@ -1,5 +1,6 @@
 import AppKit
 import MDViewerCore
+import WebKit
 
 extension M0Integration {
     static func testLiveRefresh(_ host: RenderHost, resources: URL, fixtureRoot: URL) async throws {
@@ -68,6 +69,128 @@ extension M0Integration {
         let queuedDOM = try await js(queued, "return document.querySelector('h1')?.textContent === 'Queued'") as? Bool
         try check(queuedDOM == true, "reload before shell readiness is queued and rendered")
         try await testRenderTransactions(host, root: root)
+        try await testFollowPreferenceLifecycle(resources: resources, root: root)
+        try await testFollowPreferenceRace(resources: resources, root: root, recoverWhileHeld: false)
+        try await testFollowPreferenceRace(resources: resources, root: root, recoverWhileHeld: true)
+    }
+
+    static func testFollowPreferenceLifecycle(resources: URL, root: URL) async throws {
+        let host = try RenderHost(resourceDirectory: resources.appendingPathComponent("Web"))
+        defer { host.close() }
+        host.webView.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+        host.setFollowChanges(true)
+        host.load()
+        try await waitUntil("follow preference host ready") { host.isReady }
+        let original = (0..<300).map { "Preference paragraph \($0)\n\n" }.joined()
+        for phase in ["initial", "disabled", "reload", "recovery"] {
+            if phase == "disabled" { host.setFollowChanges(false) }
+            if phase == "reload" {
+                host.setFollowChanges(true)
+                host.load()
+                try await waitUntil("follow preference reloaded") { host.isReady }
+            }
+            if phase == "recovery" {
+                host.onRecovery = { host.render(source: original, root: root) { _ in } }
+                host.webViewWebContentProcessDidTerminate(host.webView)
+                try await waitUntil("follow preference recovered") { host.isReady }
+            }
+            try await render(host, source: original, root: root)
+            _ = try await js(host, "scrollTo(0, 900); return true")
+            try await Task.sleep(nanoseconds: 80_000_000)
+            try await render(host, source: original + "Changed preference end", root: root)
+            let visible = try await js(host, "const r = document.querySelector('#document').lastElementChild.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight") as? Bool
+            let anchored = try await js(host, "return Math.abs(scrollY - 900) < 5 && !document.querySelector('.changed-flash')") as? Bool
+            try check(phase == "disabled" ? anchored == true : visible == true,
+                      "native Follow Changes preference \(phase) applies before rendering")
+        }
+    }
+
+    static func testFollowPreferenceRace(resources: URL, root: URL, recoverWhileHeld: Bool) async throws {
+        let host = try RenderHost(resourceDirectory: resources.appendingPathComponent("Web"))
+        defer {
+            host.webView.configuration.userContentController.removeAllUserScripts()
+            host.close()
+        }
+        host.webView.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+        let intercept = """
+            window.followShell = crypto.randomUUID();
+            window.followApplied = [];
+            let first = true;
+            Object.defineProperty(window, 'setFollowChanges', {
+              configurable: true,
+              set(fn) {
+                Object.defineProperty(window, 'setFollowChanges', {
+                  configurable: true, writable: true,
+                  value: enabled => {
+                    const apply = () => { fn(enabled); window.followApplied.push(enabled); };
+                    if (!first) { apply(); return; }
+                    first = false;
+                    return new Promise(resolve => {
+                      window.followHeld = true;
+                      window.releaseFollowApply = () => { apply(); resolve(true); };
+                    });
+                  }
+                });
+              }
+            });
+            """
+        host.webView.configuration.userContentController.addUserScript(WKUserScript(
+            source: intercept, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .page))
+        var readyCount = 0
+        var rendered = false
+        var renderFailure: Error?
+        var appliedAtReady: [Bool]?
+        host.onReady = {
+            readyCount += 1
+            host.webView.callAsyncJavaScript("return window.followApplied", arguments: [:], in: nil, in: .page) { result in
+                if case .success(let value) = result { appliedAtReady = value as? [Bool] }
+            }
+        }
+        let original = (0..<300).map { "Race paragraph \($0)\n\n" }.joined()
+        let queueRender = {
+            host.render(source: original, root: root) { result in
+                switch result {
+                case .success: rendered = true
+                case .failure(let error): renderFailure = error
+                }
+            }
+        }
+        host.setFollowChanges(true)
+        host.load()
+        try await waitUntil("first preference apply held") { try await js(host, "return window.followHeld === true") as? Bool == true }
+        try check(!host.isReady && readyCount == 0, "held preference apply gates readiness")
+        if recoverWhileHeld {
+            let oldShell = try await js(host, "return window.followShell") as! String
+            host.onRecovery = queueRender
+            host.webViewWebContentProcessDidTerminate(host.webView)
+            try await waitUntil("replacement preference apply held") {
+                try await js(host, "return window.followShell !== oldShell && window.followHeld === true", arguments: ["oldShell": oldShell]) as? Bool == true
+            }
+            try check(!host.isReady && readyCount == 0, "stale preference completion cannot ready the held replacement shell")
+        } else {
+            queueRender()
+        }
+        host.setFollowChanges(false)
+        _ = try await js(host, """
+            const commit = window.commitMarkdown;
+            window.commitMarkdown = generation => {
+              window.followAtCommit = [...window.followApplied];
+              return commit(generation);
+            };
+            window.releaseFollowApply();
+            return true;
+            """)
+        try await waitUntil("latest preference queued render") { (rendered && appliedAtReady != nil) || renderFailure != nil }
+        if let renderFailure { throw renderFailure }
+        let applied = try await js(host, "return window.followAtCommit") as? [Bool]
+        try check(applied == [true, false] && appliedAtReady == [true, false] && readyCount == 1 && host.isReady,
+                  "latest false preference precedes queued commit and onReady\(recoverWhileHeld ? " after held recovery" : "")")
+        _ = try await js(host, "scrollTo(0, 900); return true")
+        try await Task.sleep(nanoseconds: 80_000_000)
+        try await render(host, source: original + "Changed race end", root: root)
+        let anchored = try await js(host, "return Math.abs(scrollY - 900) < 5 && !document.querySelector('.changed-flash')") as? Bool
+        try check(anchored == true, "in-flight preference toggle anchors instead of following\(recoverWhileHeld ? " after recovery" : "")")
+        _ = try await js(host, "delete window.releaseFollowApply; delete window.followHeld; return true")
     }
 
     static func testRenderTransactions(_ host: RenderHost, root: URL) async throws {
