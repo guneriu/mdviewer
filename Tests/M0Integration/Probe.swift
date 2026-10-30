@@ -264,6 +264,10 @@ struct M0Integration {
                     try await testFIFORefresh(initial: true)
                 } else if CommandLine.arguments.count == 2, CommandLine.arguments[1] == "--fifo-replacement" {
                     try await testFIFORefresh(initial: false)
+                } else if CommandLine.arguments.count == 2, CommandLine.arguments[1] == "--tmp-refresh" {
+                    try await testTemporaryParentRefresh(parentPath: "/tmp")
+                } else if CommandLine.arguments.count == 2, CommandLine.arguments[1] == "--private-tmp-refresh" {
+                    try await testTemporaryParentRefresh(parentPath: "/private/tmp")
                 } else {
                     try await run()
                 }

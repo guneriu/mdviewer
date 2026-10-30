@@ -28,7 +28,8 @@ public final class DocumentRefresh {
 
     public func start() throws {
         guard !isClosed, directoryWatcher == nil else { return }
-        directoryWatcher = try DirectoryWatcher(directory: location.assetRoot) { [weak self] in self?.changed() }
+        let parent = try Self.physicalParentDirectoryURL(location.assetRoot)
+        directoryWatcher = try DirectoryWatcher(directory: parent) { [weak self] in self?.changed() }
         snapshot = FileSnapshot(location.canonicalURL)
         rebindFile()
         reload()
@@ -68,6 +69,14 @@ public final class DocumentRefresh {
                 self.onState?(.warning((self.hasGoodPreview ? "Preview is out of date — " : "Unable to read document — ") + error.localizedDescription))
             }
         }
+    }
+
+    private static func physicalParentDirectoryURL(_ directory: URL) throws -> URL {
+        guard let physicalPath = Darwin.realpath(directory.path, nil) else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        defer { Darwin.free(physicalPath) }
+        return URL(fileURLWithPath: String(cString: physicalPath), isDirectory: true)
     }
 
     private func requireCurrent(_ generation: Int) throws {

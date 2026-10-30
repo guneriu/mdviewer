@@ -49,7 +49,7 @@ The existing round-three blocker was reproduced before this planning task:
 
 **Files:** Modify `Tests/MDViewerCoreTests/DocumentRefreshTests.swift` and `Tests/MDViewerCoreTests/DirectoryWatcherTests.swift`.
 
-- [ ] **Step 1: Add the following test inside `DocumentRefreshTests`.** Reuse its existing `wait(_:)` helper and imports. Each parameter gets a distinct UUID filename, so parallel test execution does not share a document.
+- [x] **Step 1: Add the following test inside `DocumentRefreshTests`.** Reuse its existing `wait(_:)` helper and imports. Each parameter gets a distinct UUID filename, so parallel test execution does not share a document.
 
 ```swift
 @Test(arguments: ["/tmp", "/private/tmp"])
@@ -89,7 +89,7 @@ func temporaryParentSupportsLiveRefresh(parent: String) async throws {
 }
 ```
 
-- [ ] **Step 2: Add a missing-parent error test in the same struct.** Do not create the UUID directory. This ensures the new resolver preserves a real POSIX error rather than falling back to an unresolvable watch URL.
+- [x] **Step 2: Add a missing-parent error test in the same struct.** Do not create the UUID directory. This ensures the new resolver preserves a real POSIX error rather than falling back to an unresolvable watch URL.
 
 ```swift
 @Test @MainActor
@@ -112,7 +112,7 @@ func missingWatchParentPreservesENOENT() throws {
 }
 ```
 
-- [ ] **Step 3: Add final-directory-symlink rejection inside `DirectoryWatcherTests`.** Retain all existing regular-file, missing-target, and final-file-symlink tests.
+- [x] **Step 3: Add final-directory-symlink rejection inside `DirectoryWatcherTests`.** Retain all existing regular-file, missing-target, and final-file-symlink tests.
 
 ```swift
 @Test func rejectsFinalDirectorySymlink() throws {
@@ -133,7 +133,7 @@ func missingWatchParentPreservesENOENT() throws {
 }
 ```
 
-- [ ] **Step 4: Run the native suite before changing production code.** From the repository root:
+- [x] **Step 4: Run the native suite before changing production code.** From the repository root:
 
 ```bash
 bash scripts/test-swift.sh
@@ -145,7 +145,7 @@ Expected red evidence: `temporaryParentSupportsLiveRefresh` fails at `refresh.st
 
 **File:** Modify `Sources/MDViewerCore/DocumentRefresh.swift`.
 
-- [ ] **Step 1: Change only the parent-watcher construction in `start()`.** Preserve snapshotting, `rebindFile()`, and `reload()` order.
+- [x] **Step 1: Change only the parent-watcher construction in `start()`.** Preserve snapshotting, `rebindFile()`, and `reload()` order.
 
 ```swift
 public func start() throws {
@@ -158,7 +158,7 @@ public func start() throws {
 }
 ```
 
-- [ ] **Step 2: Add this private helper inside `DocumentRefresh`.** `Darwin` and `Foundation` are already imported. Do not run `standardizedFileURL` or `resolvingSymlinksInPath()` on the resulting URL; that would risk recreating the `/tmp` spelling.
+- [x] **Step 2: Add this private helper inside `DocumentRefresh`.** `Darwin` and `Foundation` are already imported. Do not run `standardizedFileURL` or `resolvingSymlinksInPath()` on the resulting URL; that would risk recreating the `/tmp` spelling.
 
 ```swift
 private static func physicalParentDirectoryURL(_ directory: URL) throws -> URL {
@@ -172,13 +172,13 @@ private static func physicalParentDirectoryURL(_ directory: URL) throws -> URL {
 
 The allocation is freed on every successful-resolution path. An error is captured immediately after a failed `realpath`. The existing watcher still performs `open`/`fstat`, so a final-component symlink introduced after resolution is rejected rather than deliberately followed. This is not a claim that `realpath` plus `open` eliminates every ancestor-directory race.
 
-- [ ] **Step 3: Rerun `bash scripts/test-swift.sh`.** All native tests must pass, including both temporary-parent cases, missing-parent `.ENOENT`, and both final-symlink guards. Verify that `rebindFile()` still opens `location.canonicalURL` directly with the unchanged strict watcher initializer.
+- [x] **Step 3: Rerun `bash scripts/test-swift.sh`.** All native tests must pass, including both temporary-parent cases, missing-parent `.ENOENT`, and both final-symlink guards. Verify that `rebindFile()` still opens `location.canonicalURL` directly with the unchanged strict watcher initializer.
 
 ## Task 3: Add bounded, process-isolated regressions
 
 **Files:** Modify `Tests/M0Integration/WatcherProbe.swift`, `Tests/M0Integration/Probe.swift`, `scripts/test-watchers.py`, and `scripts/verify_m0.py`.
 
-- [ ] **Step 1: Add this method to the existing `M0Integration` extension in `Tests/M0Integration/WatcherProbe.swift`.** The extension inherits the main-actor isolation on `M0Integration`. Reuse `check` and `waitUntil`; do not create an actual app window.
+- [x] **Step 1: Add this method to the existing `M0Integration` extension in `Tests/M0Integration/WatcherProbe.swift`.** The extension inherits the main-actor isolation on `M0Integration`. Reuse `check` and `waitUntil`; do not create an actual app window.
 
 ```swift
 static func testTemporaryParentRefresh(parentPath: String) async throws {
@@ -247,7 +247,7 @@ static func testTemporaryParentRefresh(parentPath: String) async throws {
 
 The 350 ms observation window is specifically for the existing 200 ms debounce after closing; readiness otherwise uses condition-based waits. If a valid refresh misses the one-second target under contention, preserve the timing and investigate rather than silently increasing the acceptance threshold. The test writes only its own UUID fixture; the viewer remains a read-only consumer.
 
-- [ ] **Step 2: Add two branches between the existing `--fifo-replacement` branch and the `else { try await run() }` fallback in `Tests/M0Integration/Probe.swift`.** Keep the `count == 2` guards and all existing FIFO modes.
+- [x] **Step 2: Add two branches between the existing `--fifo-replacement` branch and the `else { try await run() }` fallback in `Tests/M0Integration/Probe.swift`.** Keep the `count == 2` guards and all existing FIFO modes.
 
 ```swift
 } else if CommandLine.arguments.count == 2, CommandLine.arguments[1] == "--tmp-refresh" {
@@ -256,7 +256,7 @@ The 350 ms observation window is specifically for the existing 200 ms debounce a
     try await testTemporaryParentRefresh(parentPath: "/private/tmp")
 ```
 
-- [ ] **Step 3: Update `scripts/test-watchers.py` to this complete content.** Each mode executes in a fresh process, so the existing global check counter starts at zero. Retain the dedicated-binary restriction and the existing ten-second subprocess timeout.
+- [x] **Step 3: Update `scripts/test-watchers.py` to this complete content.** Each mode executes in a fresh process, so the existing global check counter starts at zero. Retain the dedicated-binary restriction and the existing ten-second subprocess timeout.
 
 ```python
 #!/usr/bin/env python3
@@ -301,9 +301,9 @@ print("PASS 4 process-timeout-bounded watcher scenarios / 24 checks")
 
 The two new modes deliberately ignore `TMPDIR` for fixture placement. The old FIFO modes retain their isolated temporary directories and existing six checks, including FIFO rejection and recovery. If a timeout kills a child before Swift cleanup runs, report any printed UUID fixture path and remove only that confirmed fixture after the child has been reaped; never bulk-delete `/tmp/MDViewer-*`.
 
-- [ ] **Step 4: Change the watcher-runner call in `scripts/verify_m0.py:192` from `timeout=30` to `timeout=50`.** Keep the existing `fifo-regression.txt` evidence filename to avoid unrelated report-path changes. Four children can each consume ten seconds; the outer timeout must not interrupt cleanup before the inner timeout can report the scenario.
+- [x] **Step 4: Change the watcher-runner call in `scripts/verify_m0.py:192` from `timeout=30` to `timeout=50`.** Keep the existing `fifo-regression.txt` evidence filename to avoid unrelated report-path changes. Four children can each consume ten seconds; the outer timeout must not interrupt cleanup before the inner timeout can report the scenario.
 
-- [ ] **Step 5: Build and execute only the dedicated probe, from the repository root.**
+- [x] **Step 5: Build and execute only the dedicated probe, from the repository root.**
 
 ```bash
 swift build --build-system swiftbuild --product M0Integration
@@ -317,7 +317,7 @@ Expected: all four children exit zero; both FIFO sentinels still report six chec
 
 **Files:** Update `TEST_RESULTS.md` after fresh verification; build evidence belongs under the existing `.build` evidence directories.
 
-- [ ] **Step 1: Run native and renderer checks.**
+- [x] **Step 1: Run native and renderer checks.**
 
 ```bash
 bash scripts/test-swift.sh
@@ -328,7 +328,7 @@ python3 scripts/test-release-verification.py
 
 Expected: zero exit status for every command; no renderer/vendor changes; existing source, symlink-escape, FIFO, cancellation, and generation protections remain passing. Do not infer success from historical test totals.
 
-- [ ] **Step 2: Run the isolated debug and release verification entry points.**
+- [x] **Step 2: Run the isolated debug and release verification entry points.**
 
 ```bash
 bash scripts/test-webkit.sh
@@ -339,20 +339,20 @@ These entry points build/sign local artifacts, inspect packaging, and directly e
 
 Expected: both suites pass including four bounded watcher scenarios, existing real-WebKit assertions, runner guards, and unchanged original-fixture hashes. Inspect `.build/m0-evidence/fifo-regression.txt` and `.build/release-evidence/fifo-regression.txt` for new scenario/timing evidence. A native test run in the current verifier remains the wrapper's default configuration; the release claim specifically applies to the release-built integration probe and package, not an independently release-configured Swift Testing suite.
 
-- [ ] **Step 3: Check the change boundary before reporting completion.** Confirm `O_EVTONLY | O_NONBLOCK | O_NOFOLLOW` and descriptor-type checks are unchanged in `Sources/MDViewerCore/DirectoryWatcher.swift`; source reading still uses `O_RDONLY | O_NONBLOCK | O_NOFOLLOW` in `Sources/MDViewerCore/DocumentLocation.swift`; file rebinding, canonical identity, and asset containment are unchanged. Stop and ask the user if completing this fix appears to require broader changes.
+- [x] **Step 3: Check the change boundary before reporting completion.** Confirm `O_EVTONLY | O_NONBLOCK | O_NOFOLLOW` and descriptor-type checks are unchanged in `Sources/MDViewerCore/DirectoryWatcher.swift`; source reading still uses `O_RDONLY | O_NONBLOCK | O_NOFOLLOW` in `Sources/MDViewerCore/DocumentLocation.swift`; file rebinding, canonical identity, and asset containment are unchanged. Stop and ask the user if completing this fix appears to require broader changes.
 
-- [ ] **Step 4: Append a dated blocker-resolution entry to `TEST_RESULTS.md`.** Record the pre-fix `.ELOOP` reproduction, actual native and isolated-probe results, observed atomic-refresh timings, and exact debug/release evidence paths. State that actual-app launch, Finder/pi-files/default-handler acceptance, VoiceOver/manual checks, network packet observation, and installation were not performed by this fix. Do not label all of M5 or all acceptance criteria complete.
+- [x] **Step 4: Append a dated blocker-resolution entry to `TEST_RESULTS.md`.** Record the pre-fix `.ELOOP` reproduction, actual native and isolated-probe results, observed atomic-refresh timings, and exact debug/release evidence paths. State that actual-app launch, Finder/pi-files/default-handler acceptance, VoiceOver/manual checks, network packet observation, and installation were not performed by this fix. Do not label all of M5 or all acceptance criteria complete.
 
 ## Acceptance and self-review checklist
 
-- [ ] Native regressions demonstrably fail before the production change and pass afterward.
-- [ ] Documents directly under `/tmp` and `/private/tmp` start successfully and refresh after direct writes and atomic replacement without a manual reload.
-- [ ] Delete/recreate preserves the last good preview, reports a warning, then clears it on recovery.
-- [ ] Closing a session prevents later preview publication.
-- [ ] Missing parent preserves `.ENOENT`; final file and directory symlinks remain rejected by the generic watcher.
-- [ ] Both initial-FIFO and replacement-FIFO children remain nonblocking and recover after valid recreation.
-- [ ] Debug and release isolated verification pass with recorded timings and unchanged original fixture hashes.
-- [ ] No changes to canonical document identity, image-root policy, no-follow/nonblocking flags, source limits, dependencies, defaults, Git state, or installed applications.
+- [x] Native regressions demonstrably fail before the production change and pass afterward.
+- [x] Documents directly under `/tmp` and `/private/tmp` start successfully and refresh after direct writes and atomic replacement without a manual reload.
+- [x] Delete/recreate preserves the last good preview, reports a warning, then clears it on recovery.
+- [x] Closing a session prevents later preview publication.
+- [x] Missing parent preserves `.ENOENT`; final file and directory symlinks remain rejected by the generic watcher.
+- [x] Both initial-FIFO and replacement-FIFO children remain nonblocking and recover after valid recreation.
+- [x] Debug and release isolated verification pass with recorded timings and unchanged original fixture hashes.
+- [x] No changes to canonical document identity, image-root policy, no-follow/nonblocking flags, source limits, dependencies, defaults, Git state, or installed applications.
 
 **Contract mapping:** This addresses the `/tmp` blocker in `docs/plans/2026-10-29-mdviewer-v1.md` M3 and the tested refresh/deletion portions of `docs/specs/2026-10-29-mdviewer-v1-design.md` A06/A07. Literal filename coverage contributes to A08. Keeping canonical identity and asset policy unchanged protects A03/A09; it does not replace their wider existing tests. The remainder of A06/A07 and manual product acceptance continue to rely on their existing dedicated evidence and outstanding acceptance work.
 

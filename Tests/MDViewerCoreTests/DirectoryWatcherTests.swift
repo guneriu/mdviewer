@@ -15,6 +15,23 @@ struct DirectoryWatcherTests {
         }
     }
 
+    @Test func rejectsFinalDirectorySymlink() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MDViewer-watch-link-\(UUID().uuidString)")
+        let target = root.appendingPathComponent("physical")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let alias = root.appendingPathComponent("alias")
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: target)
+        do {
+            let watcher = try DirectoryWatcher(directory: alias, onChange: {})
+            watcher.stop()
+            Issue.record("Generic watcher must not follow a final directory symlink")
+        } catch let error as POSIXError {
+            #expect(error.code == .ELOOP)
+        }
+    }
+
     @Test func rejectsSymlinksAndPreservesOpenErrors() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

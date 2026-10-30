@@ -3,6 +3,69 @@ import Foundation
 import MDViewerCore
 
 extension M0Integration {
+    static func testTemporaryParentRefresh(parentPath: String) async throws {
+        let file = URL(fileURLWithPath: parentPath, isDirectory: true)
+            .appendingPathComponent("MDViewer-watch-\(UUID().uuidString) 雪 % '.md")
+        try Data("initial".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        print("FIXTURE temporary-parent: \(file.path)")
+        fflush(stdout)
+
+        var generation = 0, displayed = "", warning = ""
+        let refresh = DocumentRefresh(
+            location: try DocumentLocation(file),
+            invalidate: { generation += 1; return generation },
+            render: { source, _ in displayed = source })
+        defer { refresh.close() }
+        refresh.onState = { state in
+            if case .warning(let message) = state { warning = message }
+            if case .displayed = state { warning = "" }
+        }
+
+        let started = Date()
+        try refresh.start()
+        try check(Date().timeIntervalSince(started) < 0.5,
+                  "temporary-parent startup returns within 0.5 seconds")
+        try await waitUntil("temporary-parent initial preview") {
+            displayed == "initial" && warning.isEmpty
+        }
+
+        try Data("direct".utf8).write(to: file)
+        try await waitUntil("temporary-parent direct write") {
+            displayed == "direct" && warning.isEmpty
+        }
+        try check(refresh.hasGoodPreview, "direct-write refresh retains good-preview state")
+
+        let atomicStarted = Date()
+        try Data("atomic".utf8).write(to: file, options: .atomic)
+        try await waitUntil("temporary-parent atomic replacement") {
+            displayed == "atomic" && warning.isEmpty
+        }
+        let atomicElapsed = Date().timeIntervalSince(atomicStarted)
+        print("TIMING temporary parent \(parentPath) atomic save: \(atomicElapsed) s")
+        try check(atomicElapsed < 1.0, "atomic replacement refresh completes within 1 second")
+
+        try FileManager.default.removeItem(at: file)
+        try await waitUntil("temporary-parent missing warning") { !warning.isEmpty }
+        try check(displayed == "atomic" && warning.hasPrefix("Preview is out of date"),
+                  "deletion preserves the last good preview with a warning")
+
+        try Data("recreated".utf8).write(to: file)
+        try await waitUntil("temporary-parent recreation") {
+            displayed == "recreated" && warning.isEmpty
+        }
+        try check(refresh.hasGoodPreview, "recreation clears warning and resumes preview")
+
+        let completed = refresh.completedGeneration
+        refresh.close()
+        try Data("after close".utf8).write(to: file)
+        try await Task.sleep(nanoseconds: 350_000_000)
+        try check(refresh.isClosed && displayed == "recreated" &&
+                  refresh.completedGeneration == completed,
+                  "closed session cannot publish another preview")
+        print("TMP REFRESH REGRESSION PASSED: \(checks) checks")
+    }
+
     static func testFIFORefresh(initial: Bool) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("MDViewer-FIFO-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

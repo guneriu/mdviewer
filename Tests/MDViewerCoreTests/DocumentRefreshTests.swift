@@ -33,6 +33,61 @@ struct DocumentRefreshTests {
         throw RefreshTimeout()
     }
 
+    @Test(arguments: ["/tmp", "/private/tmp"])
+    @MainActor
+    func temporaryParentSupportsLiveRefresh(parent: String) async throws {
+        let file = URL(fileURLWithPath: parent, isDirectory: true)
+            .appendingPathComponent("MDViewer-watch-\(UUID().uuidString) 雪 % '.md")
+        try Data("initial".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        var generation = 0, displayed = "", warning = ""
+        let refresh = DocumentRefresh(
+            location: try DocumentLocation(file),
+            invalidate: { generation += 1; return generation },
+            render: { source, _ in displayed = source })
+        defer { refresh.close() }
+        refresh.onState = { state in
+            if case .warning(let message) = state { warning = message }
+            if case .displayed = state { warning = "" }
+        }
+
+        try refresh.start()
+        try await wait { displayed == "initial" && warning.isEmpty }
+        try Data("direct".utf8).write(to: file)
+        try await wait { displayed == "direct" && warning.isEmpty }
+        try Data("atomic".utf8).write(to: file, options: .atomic)
+        try await wait { displayed == "atomic" && warning.isEmpty }
+
+        try FileManager.default.removeItem(at: file)
+        try await wait { !warning.isEmpty }
+        #expect(displayed == "atomic")
+        #expect(warning.hasPrefix("Preview is out of date"))
+
+        try Data("recreated".utf8).write(to: file)
+        try await wait { displayed == "recreated" && warning.isEmpty }
+        #expect(refresh.hasGoodPreview)
+    }
+
+    @Test @MainActor
+    func missingWatchParentPreservesENOENT() throws {
+        let missing = URL(fileURLWithPath: "/tmp", isDirectory: true)
+            .appendingPathComponent("MDViewer-missing-\(UUID().uuidString)")
+            .appendingPathComponent("document.md")
+        var generation = 0
+        let refresh = DocumentRefresh(
+            location: try DocumentLocation(missing),
+            invalidate: { generation += 1; return generation },
+            render: { _, _ in })
+        defer { refresh.close() }
+        do {
+            try refresh.start()
+            Issue.record("Missing parent directory must fail watch startup")
+        } catch let error as POSIXError {
+            #expect(error.code == .ENOENT)
+        }
+    }
+
     @Test @MainActor func reorderedReadsAndCloseCannotWin() async throws {
         let reads = DelayedReads()
         let location = try DocumentLocation(URL(fileURLWithPath: "/tmp/deterministic.md"))

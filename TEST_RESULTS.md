@@ -678,3 +678,116 @@ are NOT accepted; M0 gives partial feasibility evidence for A02/A03/A08/A09 only
 
 No Git metadata was created; no files were staged, committed or pushed. No
 pi-files files, system tools or `~/Applications` contents were changed.
+
+---
+
+## Temporary-parent watcher blocker resolution — 2026-10-30
+
+Fresh local execution of `docs/plans/2026-10-29-tmp-parent-watcher-blocker.md`
+Tasks 1–4 resolves the direct-`/tmp` automatic-refresh blocker described in the
+historical round-three entry above. **PASS: 19 native tests / 5 suites, 24 watcher
+checks in four independently ten-second-bounded processes, and 81 real-WebKit
+checks in each isolated debug/release verification.** This is scoped blocker
+resolution evidence, not completion of M5 or all acceptance criteria.
+
+### Red before production change; green afterward
+
+Added the native regressions first, then ran `bash scripts/test-swift.sh` before
+modifying `Sources/MDViewerCore/DocumentRefresh.swift`. Exit **1**; both `/tmp`
+and `/private/tmp` cases failed at startup with `.ELOOP` (errno 62). Exact first
+failure line from `.build/tmp-parent-evidence/task1-red.txt`:
+
+```text
+✘ Test temporaryParentSupportsLiveRefresh(parent:) recorded an issue with 1 argument parent → "/tmp" at DocumentRefreshTests.swift:36:6: Caught error: Error Domain=NSPOSIXErrorDomain Code=62 "Too many levels of symbolic links"
+```
+
+The missing-parent `.ENOENT` and generic watcher's final-directory/file-symlink
+rejection tests passed in that red run. After resolving only the parent-watch
+endpoint with `Darwin.realpath`, the same wrapper exited **0**, reporting
+`Test run with 19 tests in 5 suites passed` in
+`.build/tmp-parent-evidence/task2-green.txt`. Snapshotting, file rebinding and
+reload order are unchanged; successful `realpath` allocations are freed, and
+resolution errors propagate immediately without a fallback URL.
+
+### Fresh verification commands
+
+| Command | Exit | Key result / evidence |
+| --- | --- | --- |
+| `bash scripts/test-swift.sh` (Task 1 red) | 1 (expected) | 19 tests / 5 suites; two `.ELOOP` issues; `.build/tmp-parent-evidence/task1-red.txt`. |
+| `bash scripts/test-swift.sh` (Task 2 green) | 0 | 19 tests / 5 suites pass; `.build/tmp-parent-evidence/task2-green.txt`. |
+| `swift build --build-system swiftbuild --product M0Integration` | 0 | Build complete; `.build/tmp-parent-evidence/task3-build.txt`. |
+| `BIN_DIR="$(swift build --build-system swiftbuild --show-bin-path)"` | 0 | Dedicated debug-probe binary directory resolved. |
+| `python3 scripts/test-watchers.py "$BIN_DIR/M0Integration"` | 0 | `PASS 4 process-timeout-bounded watcher scenarios / 24 checks`; `.build/tmp-parent-evidence/task3-watchers.txt`. |
+| `bash scripts/test-swift.sh` (Task 4) | 0 | 19 tests / 5 suites pass; `.build/tmp-parent-evidence/task4-native.txt`. |
+| `node scripts/test-renderer-assets.mjs` | 0 | 4 SHA-256 records, 12 locked license records, offline shell/CSS, 2 byte-identical regenerations; `.build/tmp-parent-evidence/task4-renderer.txt`. |
+| `node scripts/test-reference-performance.mjs` | 0 | Reference syntax and 6 bounded advisory timing cases pass; `.build/tmp-parent-evidence/task4-performance.txt`. |
+| `python3 scripts/test-release-verification.py` | 0 | 30 asset + 21 probe/integrity/safety controls across 3 Python modes; `.build/tmp-parent-evidence/task4-release-verification.txt`. |
+| `bash scripts/test-webkit.sh` | 0 | `M0 NON-LAUNCH-SERVICES CHECKS PASSED`; 19 native / 24 watcher / 81 WebKit; `.build/tmp-parent-evidence/task4-debug-webkit.txt`. |
+| `CONFIGURATION=release bash scripts/test-webkit.sh` | 0 | `M0 NON-LAUNCH-SERVICES CHECKS PASSED`; 19 native / 24 watcher / 81 WebKit; `.build/tmp-parent-evidence/task4-release-webkit.txt`. |
+| `python3 scripts/test-packaging.py` (extra validation of approved guard removal) | 0 | Release signature/resources, 3 tamper rejections, 4 install guards, dry-run without Applications creation, shell syntax; `.build/tmp-parent-evidence/task4-packaging.txt`. |
+| `git diff --check` | 0 | No whitespace errors; read-only Git inspection only. |
+
+Exact debug evidence paths:
+`.build/m0-evidence/swift-tests.txt`,
+`.build/m0-evidence/fifo-regression.txt`,
+`.build/m0-evidence/webkit-integration.txt`, and
+`.build/m0-evidence/source-hashes.json`.
+Exact release evidence paths:
+`.build/release-evidence/swift-tests.txt`,
+`.build/release-evidence/fifo-regression.txt`,
+`.build/release-evidence/webkit-integration.txt`, and
+`.build/release-evidence/source-hashes.json`.
+Both verifiers confirmed unchanged opened/original fixture hashes; independently
+compared the recorded original hashes with the current `Fixtures` tree.
+The native wrapper uses its default debug configuration even within the release
+verifier: the release claim applies to the release-built probe/package, not to
+an independently release-configured Swift Testing suite.
+
+### Observed atomic-refresh timings (seconds, local measurements)
+
+| Run | Direct `/tmp` fixture | Direct `/private/tmp` fixture | Existing actual-WebKit atomic-save scenario |
+| --- | --- | --- | --- |
+| Standalone dedicated probe | 0.21159088611602783 | 0.21073997020721436 | Not run in watcher-only modes |
+| Isolated debug verifier | 0.21070897579193115 | 0.21480095386505127 | 0.211 |
+| Isolated release verifier | 0.21170401573181152 | 0.2124629020690918 | 0.264 |
+
+All temporary-parent atomic refreshes satisfy the unchanged one-second target.
+Both new children also verify direct saves, last-good-preview preservation with
+a deletion warning, recreation clearing the warning, and no publication after
+close (observed beyond the existing 200 ms debounce). Both six-check FIFO
+children still reject nonregular descriptors without blocking and recover after
+valid recreation. The outer watcher-runner timeout is now 50 seconds; each of
+its four children retains a ten-second timeout and dedicated-binary restriction.
+
+### Boundary, deviations and remaining acceptance
+
+Task 4 Step 3 was checked against Git HEAD: `DirectoryWatcher.swift` retains
+`O_EVTONLY | O_NONBLOCK | O_NOFOLLOW`, `fstat`, and regular-file/directory checks;
+`DocumentLocation.swift` retains `O_RDONLY | O_NONBLOCK | O_NOFOLLOW` and all
+source limits. Canonical identity, file rebinding, asset containment,
+`DocumentWindow.swift`, packaging/association declarations, renderer/vendor
+assets, and the original v1 plan/design are unchanged. No generalized
+ancestor-directory race protection or watcher-recovery redesign is claimed.
+
+**Approved deviation:** the repo now has user-authorized Git metadata. Supervisor
+approved deleting only the obsolete `.git`-must-not-exist checks from
+`scripts/verify_m0.py` and `scripts/test-packaging.py` (the latter expands the
+plan's original file map). All Launch Services, installation and fixture-hash
+guards remain. The extra packaging test exercised only rejection/dry-run paths;
+no installation occurred. No mutating Git command was run; read-only
+`git diff --cached --name-only` confirmed no staged files.
+
+`MDVIEWER_M0_ALLOW_LAUNCH_SERVICES` remained **unset**. The actual MDViewer app
+was built/signed/inspected only, never launched. No `open`, `lsregister`, default
+setter, installation, or bulk temporary-directory deletion was used. Six exact
+printed temporary-parent UUID paths across standalone/debug/release runs were
+checked with `lexists`; **no leftover fixture paths**, no cleanup deletion
+needed. Test-owned native and FIFO fixtures completed their deferred cleanup.
+Local `.build` probe/package/fixture/evidence artifacts intentionally remain.
+
+Actual-app launch, Finder/pi-files/default-handler acceptance, VoiceOver/manual
+checks, network packet observation, and installation were **not performed** by
+this fix. Existing macOS 13 runtime and slow-volume/read-serialization limits
+remain; CLT search-path and Swift Testing macOS-deployment linker warnings
+persist. Independent acceptance review is still required; no all-M5 or universal
+acceptance claim is made.
