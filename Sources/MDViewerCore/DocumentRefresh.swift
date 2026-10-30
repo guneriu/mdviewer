@@ -17,22 +17,43 @@ public final class DocumentRefresh {
     private var task: Task<Void, Never>?
     private var directoryWatcher: DirectoryWatcher?
     private var fileWatcher: DirectoryWatcher?
+    private var assetWatcher: AssetWatcher?
+    internal typealias AssetWatcherFactory = (URL, URL, @escaping () -> Void) throws -> AssetWatcher
+    private let assetWatcherFactory: AssetWatcherFactory
     private var snapshot: FileSnapshot?
     private var latest = 0
 
-    public init(location: DocumentLocation, invalidate: @escaping () -> Int,
+    public convenience init(location: DocumentLocation, invalidate: @escaping () -> Int,
                 read: @escaping Reader = { try await DocumentIO.shared.read($0) },
                 render: @escaping Renderer) {
+        self.init(location: location, invalidate: invalidate, read: read,
+                  assetWatcherFactory: { try AssetWatcher(root: $0, document: $1, onChange: $2) }, render: render)
+    }
+
+    internal init(location: DocumentLocation, invalidate: @escaping () -> Int,
+                  read: @escaping Reader = { try await DocumentIO.shared.read($0) },
+                  assetWatcherFactory: @escaping AssetWatcherFactory, render: @escaping Renderer) {
         self.location = location; self.invalidate = invalidate; self.read = read; self.render = render
+        self.assetWatcherFactory = assetWatcherFactory
     }
 
     public func start() throws {
         guard !isClosed, directoryWatcher == nil else { return }
         let parent = try Self.physicalParentDirectoryURL(location.assetRoot)
         directoryWatcher = try DirectoryWatcher(directory: parent) { [weak self] in self?.changed() }
+        do {
+            assetWatcher = try assetWatcherFactory(parent, location.canonicalURL) { [weak self] in self?.reload(debounce: true) }
+        } catch {
+            fputs("MDViewer: image auto-refresh unavailable; use Reload\n", stderr)
+        }
         snapshot = FileSnapshot(location.canonicalURL)
         rebindFile()
         reload()
+    }
+
+    public func updateAssetPaths(_ paths: Set<String>, generation: Int) {
+        guard !isClosed, latest == generation else { return }
+        assetWatcher?.updatePaths(paths)
     }
 
     public func reload(debounce: Bool = false) {
@@ -97,6 +118,7 @@ public final class DocumentRefresh {
     public func close() {
         guard !isClosed else { return }
         isClosed = true; latest = invalidate()
+        assetWatcher?.stop(); assetWatcher = nil
         task?.cancel(); task = nil
         fileWatcher?.stop(); directoryWatcher?.stop()
         fileWatcher = nil; directoryWatcher = nil; onState = nil

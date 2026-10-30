@@ -25,6 +25,65 @@ private actor RetryingReads {
 private struct RefreshTimeout: Error { }
 
 struct DocumentRefreshTests {
+    @Test @MainActor func currentAssetPathsReloadUnchangedSourceAndCloseStopsEvents() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("document.md")
+        try Data("unchanged".utf8).write(to: file)
+        let allowed = root.resolvingSymlinksInPath().appendingPathComponent("allowed.png").path
+        let unrelated = root.resolvingSymlinksInPath().appendingPathComponent("unrelated.png").path
+        var generation = 0, renders = 0
+        var watcher: AssetWatcher?
+        let refresh = DocumentRefresh(location: try DocumentLocation(file), invalidate: { generation += 1; return generation },
+            assetWatcherFactory: { root, document, callback in
+                let created = try AssetWatcher(root: root, document: document, onChange: callback)
+                watcher = created; return created
+            }, render: { _, _ in renders += 1 })
+        defer { refresh.close() }
+        try refresh.start()
+        try await wait { refresh.completedGeneration > 0 }
+        let current = refresh.completedGeneration
+        refresh.updateAssetPaths([allowed], generation: current)
+        refresh.updateAssetPaths([unrelated], generation: current - 1)
+        watcher?.receive(paths: [allowed], flags: [0])
+        try await wait { refresh.completedGeneration > current }
+        #expect(renders == 2)
+        refresh.close()
+        let completed = refresh.completedGeneration
+        refresh.updateAssetPaths([allowed], generation: generation)
+        watcher?.receive(paths: [allowed], flags: [0])
+        try await Task.sleep(nanoseconds: 350_000_000)
+        #expect(refresh.completedGeneration == completed && renders == 2)
+    }
+
+    @Test @MainActor func assetStreamFailureKeepsSourceReloadAndWarningRecovery() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("document.md")
+        try Data("initial".utf8).write(to: file)
+        var generation = 0, attempts = 0, displayed = "", warning = false
+        let refresh = DocumentRefresh(location: try DocumentLocation(file), invalidate: { generation += 1; return generation },
+            assetWatcherFactory: { _, _, _ in attempts += 1; throw POSIXError(.EIO) },
+            render: { source, _ in displayed = source })
+        defer { refresh.close() }
+        refresh.onState = { if case .warning = $0 { warning = true } }
+        try refresh.start()
+        try await wait { displayed == "initial" }
+        try Data("source change".utf8).write(to: file)
+        try await wait { displayed == "source change" }
+        try FileManager.default.removeItem(at: file)
+        try await wait { warning }
+        #expect(refresh.hasGoodPreview && displayed == "source change")
+        try Data("recreated".utf8).write(to: file)
+        try await wait { displayed == "recreated" }
+        let before = refresh.completedGeneration
+        refresh.reload()
+        try await wait { refresh.completedGeneration > before }
+        #expect(attempts == 1)
+    }
+
     @MainActor private func wait(_ condition: () async -> Bool) async throws {
         for _ in 0..<200 {
             if await condition() { return }
