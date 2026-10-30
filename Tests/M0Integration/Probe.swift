@@ -268,6 +268,14 @@ struct M0Integration {
                     try await testTemporaryParentRefresh(parentPath: "/tmp")
                 } else if CommandLine.arguments.count == 2, CommandLine.arguments[1] == "--private-tmp-refresh" {
                     try await testTemporaryParentRefresh(parentPath: "/private/tmp")
+                } else if CommandLine.arguments.count == 2, CommandLine.arguments[1] == "--asset-image-events" {
+                    try await testAssetImages("events")
+                } else if CommandLine.arguments.count == 2, CommandLine.arguments[1] == "--asset-image-directory" {
+                    try await testAssetImages("directory")
+                } else if CommandLine.arguments.count == 2, CommandLine.arguments[1] == "--asset-image-filtering" {
+                    try await testAssetImages("filtering")
+                } else if CommandLine.arguments.count == 2, CommandLine.arguments[1] == "--asset-tmp-parent" {
+                    try await testAssetImages("tmp-parent")
                 } else {
                     try await run()
                 }

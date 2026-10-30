@@ -16,10 +16,15 @@ scenarios = (
     ("--fifo-replacement", "FIFO REGRESSION PASSED: 6 checks"),
     ("--tmp-refresh", "TMP REFRESH REGRESSION PASSED: 6 checks"),
     ("--private-tmp-refresh", "TMP REFRESH REGRESSION PASSED: 6 checks"),
+    ("--asset-image-events", "ASSET IMAGE EVENTS PASSED: 10 checks"),
+    ("--asset-image-directory", "ASSET IMAGE DIRECTORY PASSED: 2 checks"),
+    ("--asset-image-filtering", "ASSET IMAGE FILTERING PASSED: 5 checks"),
+    ("--asset-tmp-parent", "ASSET TMP PARENT PASSED: 3 checks"),
 )
 for scenario, marker in scenarios:
     with tempfile.TemporaryDirectory(prefix="MDViewer-watcher-probe-") as temporary:
         env = dict(os.environ, TMPDIR=temporary)
+        env.pop("MDVIEWER_M0_ALLOW_LAUNCH_SERVICES", None)
         try:
             result = subprocess.run(
                 [str(binary), scenario], env=env, cwd="/private/tmp", text=True,
@@ -36,4 +41,4 @@ for scenario, marker in scenarios:
         print(result.stdout, end="", flush=True)
         if result.returncode or marker not in result.stdout:
             raise SystemExit(f"Watcher regression failed: {scenario}\n{result.stderr}")
-print("PASS 4 process-timeout-bounded watcher scenarios / 24 checks")
+print("PASS 8 process-timeout-bounded watcher scenarios / 44 checks")
