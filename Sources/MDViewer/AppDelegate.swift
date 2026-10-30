@@ -71,6 +71,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var currentDocument: DocumentWindow? { documents.values.first { $0.window === NSApp.keyWindow } }
+    @objc private func showAbout(_ sender: Any?) {
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: AboutCredits.attributedString()])
+    }
     @objc private func findDocument(_ sender: Any?) { currentDocument?.showFind() }
     @objc private func zoomIn(_ sender: Any?) { currentDocument?.zoom(by: 1.2) }
     @objc private func zoomOut(_ sender: Any?) { currentDocument?.zoom(by: 1 / 1.2) }
@@ -91,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(item)
         }
         let app = menu("MDViewer")
-        add(app, "About MDViewer", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), "")
+        add(app, "About MDViewer", #selector(showAbout(_:)), "", target: self)
         app.addItem(.separator())
         let services = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
         services.submenu = NSMenu(title: "Services")
