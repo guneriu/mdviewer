@@ -2,7 +2,7 @@
 
 ## Content-anchored scrolling and Follow Changes — isolated gate (2026-10-30)
 
-**PASS: 19 Swift tests / 5 suites, 127 real-WebKit checks in both debug and
+**PASS: 19 Swift tests / 5 suites, 130 real-WebKit checks in both debug and
 release, and 24 watcher checks in four process-timeout-bounded scenarios per
 configuration.** These are isolated `M0Integration` results, not actual-app menu
 or Launch Services acceptance. The actual app was compiled/packaged/inspected
@@ -15,14 +15,19 @@ no network was used, and `MDVIEWER_M0_ALLOW_LAUNCH_SERVICES` remained unset.
   50 blocks above the viewport preserves the visible block within **5 px**.
   Delayed image load/error above it preserves the same tolerance during the
   one-second settling window. Scroll, wheel, key and explicit fragment actions
-  cancel correction; listener retirement is checked on timeout and next commit.
+  cancel correction; the same-timing no-input control asserts the synthetic image
+  error moves `scrollY` by **more than 100 px**, demonstrating active re-anchoring.
+  The control follows the existing input cases to preserve their scenario order.
+  Listener retirement is checked on timeout and next commit.
   Deleting the anchor restores the nearest surviving predecessor to **its own**
   saved top. Duplicate occurrences at two offsets, all-block replacement,
   long-to-short clamping and invalidated staging are covered.
 - **A3:** off/on edit, insertion, trailing deletion and unchanged-render cases
   assert anchoring versus visible changed-block following. First render has no
-  flash; the class is removed after 1.2 seconds. A delayed image above a followed
-  block settles that final block, not the pre-follow anchor. Source checks cover
+  flash; the expiry probe asserts the class immediately after render and at
+  **0.8 seconds**, then waits with the existing bound for removal after 1.2 seconds.
+  A delayed image above a followed block settles that final block, not the
+  pre-follow anchor. Source checks cover
   reduced-motion animation suppression (not a human accessibility assessment).
 - **A4/native lifecycle:** a Bool set before load survives reload and simulated
   bounded content-process recovery; false restores anchoring. A probe-only
@@ -39,7 +44,11 @@ no network was used, and `MDVIEWER_M0_ALLOW_LAUNCH_SERVICES` remained unset.
   `TypeError: window.setFollowChanges is not a function`; Task 4 compilation fails
   with `value of type 'RenderHost' has no member 'setFollowChanges'`. The task
   green logs and final logs in that directory record the passing replacements.
-  These ignored local artifacts are not promised in a fresh checkout.
+  Review follow-up mutation checks also reject an intentionally cancelled
+  no-input control (`review-settle-control-red.txt`) and an intentionally cleared
+  flash before 0.8 seconds (`review-flash-expiry-red.txt`). Both mutations were
+  probe-only and removed before the final four-command verification; no production
+  source changed. These ignored local artifacts are not promised in a fresh checkout.
 
 ### Commands and scoped results
 
@@ -53,10 +62,11 @@ and timing ceilings are unchanged.
 | `bash scripts/test-swift.sh` | `Test run with 19 tests in 5 suites passed`. |
 | `npm test` | PASS **4 assets / 12 production-package/license records / 2 byte-identical regenerations**; **6 advisory timing cases + 1 single-block hashing case**. |
 | `node scripts/test-renderer-assets.mjs && node scripts/test-reference-performance.mjs` | Same asset counts; `PASS reference syntax, 6 advisory timing cases and 1 single-block hashing case (5s child timeout, 4s ceiling)`. |
+| `node scripts/test-renderer-assets.mjs` | Review follow-up: `PASS 4 asset SHA-256 records, 12 locked production-package/license records, offline shell/CSS and 2 byte-identical regenerations`. |
 | `python3 scripts/verify_assets.py` | `PASS node-free vendored/packaged asset SHA-256/size/allowlist/notices verification`. |
-| `bash scripts/test-webkit.sh` | `M0-M4 WEBKIT INTEGRATION PASSED: 127 checks`; embedded native suite **19 / 5** and **4 watcher scenarios / 24 checks**. |
-| `CONFIGURATION=release bash scripts/test-webkit.sh` | Same **127 WebKit / 19 Swift / 5 suites / 24 watcher** counts; `M0 NON-LAUNCH-SERVICES CHECKS PASSED`. |
-| `python3 scripts/verify_m0.py --webkit-only` | Same debug counts; `M0 NON-LAUNCH-SERVICES CHECKS PASSED`. The no-argument Launch Services path was deliberately not run. |
+| `bash scripts/test-webkit.sh` | `M0-M4 WEBKIT INTEGRATION PASSED: 130 checks`; embedded native suite **19 / 5** and **4 watcher scenarios / 24 checks**. |
+| `CONFIGURATION=release bash scripts/test-webkit.sh` | Same **130 WebKit / 19 Swift / 5 suites / 24 watcher** counts; `M0 NON-LAUNCH-SERVICES CHECKS PASSED`. |
+| `python3 scripts/verify_m0.py --webkit-only` | Original standalone run: **127 WebKit checks**; review follow-up through `test-webkit.sh`: **130**. `M0 NON-LAUNCH-SERVICES CHECKS PASSED`. The no-argument Launch Services path was deliberately not run. |
 | `python3 scripts/test-packaging.py` | `PASS release signature/resources, 3 tamper rejections, 4 install guards, dry-run without Applications creation, shell syntax`. No mutating install branch executed. |
 | `git diff --check` | PASS; no whitespace errors. No shell scripts changed; packaging checks their syntax. |
 

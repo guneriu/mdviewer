@@ -353,7 +353,14 @@ extension M0Integration {
                 }
             }
         }
+        _ = try await js(host, "scrollTo(0, 900); return true")
+        try await Task.sleep(nanoseconds: 80_000_000)
         try await render(host, source: original + "Flash expiry", root: root)
+        let flashStarted = try await js(host, "return !!document.querySelector('.changed-flash')") as? Bool
+        try check(flashStarted == true, "changed-flash class is present immediately after following a change")
+        try await Task.sleep(nanoseconds: 800_000_000)
+        let flashActive = try await js(host, "return !!document.querySelector('.changed-flash')") as? Bool
+        try check(flashActive == true, "changed-flash class remains present at 0.8 seconds")
         try await waitUntil("flash removed after 1.2 seconds") { try await js(host, "return !document.querySelector('.changed-flash')") as? Bool == true }
         try check(true, "changed-flash class is removed within bounded wait after 1.2 seconds")
 
@@ -464,7 +471,7 @@ extension M0Integration {
             try check(abs(settled) < 5, "late image \(error ? "error" : "load") settles anchor within 5 px")
             _ = try await js(host, "window.commitMarkdown = window.imageCommit; return true")
         }
-        for input in ["scroll", "wheel", "keydown", "fragment"] {
+        for input in ["scroll", "wheel", "keydown", "fragment", "none"] {
             try await render(host, source: "![tall](\(name))\n\n" + original, root: root)
             try await waitUntil("cancellation image decode") { try await js(host, "return document.querySelector('#document img').complete") as? Bool == true }
             _ = try await js(host, "scrollTo(0, 2500); return true")
@@ -473,18 +480,22 @@ extension M0Integration {
             _ = try await js(host, """
                 if (input === 'scroll') scrollTo(0, scrollY + 120);
                 else if (input === 'fragment') window.scrollToFragment('missing');
-                else dispatchEvent(new Event(input));
+                else if (input !== 'none') dispatchEvent(new Event(input));
                 return true;
                 """, arguments: ["input": input])
             try await Task.sleep(nanoseconds: 80_000_000)
-            let uncorrected = try await js(host, """
+            let correction = try await js(host, """
                 const before = scrollY;
                 const image = document.querySelector('#document img');
                 image.style.height = '2400px';
                 image.dispatchEvent(new Event('error'));
-                return Math.abs(scrollY - before) < 5;
-                """) as? Bool
-            try check(uncorrected == true, "\(input) cancels late-image viewport corrections")
+                return Math.abs(scrollY - before);
+                """) as! Double
+            if input == "none" {
+                try check(correction > 100, "without input, late-image error re-anchors the viewport by more than 100 px")
+            } else {
+                try check(correction < 5, "\(input) cancels late-image viewport corrections")
+            }
         }
         _ = try await js(host, """
             const container = document.querySelector('#document');
