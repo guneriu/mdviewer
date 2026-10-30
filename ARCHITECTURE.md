@@ -29,8 +29,9 @@ Milestones: [implementation plan](docs/plans/2026-10-29-mdviewer-v1.md).
 | --- | --- |
 | `DocumentLocation.swift` | Validates a document URL, derives `canonicalURL` and `assetRoot`, and performs the bounded source read (10 MiB cap, regular file only, `O_RDONLY\|O_NONBLOCK\|O_NOFOLLOW`, `fstat` stable before and after). |
 | `DocumentIO.swift` | Shared serial actor (`DocumentIO.shared`) used for all source and image reads, off the main thread. |
-| `DocumentRefresh.swift` | One refresh session per window: parent-directory and file watchers, 200 ms debounce, generation counter and cancellation, retries, warning/displayed state. |
+| `DocumentRefresh.swift` | One refresh session per window: source and optional asset watchers, 200 ms debounce, generation counter and cancellation, retries, warning/displayed state. |
 | `DirectoryWatcher.swift` | Dispatch filesystem-event source over `O_EVTONLY\|O_NONBLOCK\|O_NOFOLLOW` descriptors; rejects FIFOs, nonregular targets and final-component symlinks. |
+| `AssetWatcher.swift` | Per-document FSEvents stream with bounded committed image paths, physical/case-aware/Unicode-normalized matching, ancestor and loss/root rescan triggers, and idempotent lifetime cleanup. |
 | `RenderHost.swift` | `WKWebView` lifecycle: nonpersistent data store, content-blocking rules, navigation policy, render pipeline. |
 | `AssetGateway.swift` | `mdviewer:` URL-scheme handler. Serves only registered bundle resources and per-render image capabilities, enforces containment and image budgets, sets CSP. |
 | `LinkPolicy.swift` | Classifies link targets: same-document, local Markdown, external (http/https/mailto), reveal-in-Finder, or blocked. |
@@ -50,18 +51,51 @@ DocumentWindow ──► RenderHost (WKWebView + AssetGateway on mdviewer:)
 DocumentRefresh.start()
   ├─ DirectoryWatcher(realpath(parent))   ← atomic saves, delete/recreate
   ├─ DirectoryWatcher(canonical file)     ← in-place writes (rebound on change)
+  ├─ AssetWatcher(realpath(parent))       ← referenced image/ancestor/loss events
   └─ reload(): DocumentIO bounded read ──► render(source, generation)
                                                   │
 RenderHost.render                                 ▼
   1. JS prepareMarkdown → image and link references
   2. DocumentIO image batch → AssetGateway.stage (containment, budgets)
   3. LinkPolicy classifies links
-  4. JS stage → DOMPurify-sanitized DOM → commit; native capability commit
+  4. JS stage → DOMPurify-sanitized DOM → commit; native capability/link commit
+  5. requireCurrent → onAssetPaths(batch.resolvedPaths, generation)
+     → DocumentRefresh.updateAssetPaths → replace AssetWatcher trigger set
 ```
 
 Each change bumps a generation number. Stale reads and renders are cancelled, and
 a closed session cannot publish. When a read fails, the last good preview stays on
 screen with an "out of date" warning. Recreating the file clears the warning.
+
+## Referenced image refresh
+
+The [image-refresh design](docs/specs/2026-10-30-image-auto-refresh-design.md)
+adds a trigger-only FSEvents stream under the physical document root. Only a
+successful current render publishes a replacement path set; failed, stale and
+closed renders cannot change it. An empty successful render clears it. Events use
+`reload(debounce: true)`, bypassing only the source snapshot filter, not any read,
+render, generation or capability checks. Startup failure logs a content-free
+fallback diagnostic once and leaves source watching and manual Reload available.
+
+`AssetPolicy` collects at most **256 existing contained regular-file paths + 256
+missing paths** within the 2,048-reference scan limit. Existing ancestors of missing
+paths are physically resolved and containment checked. Dangling/escaping symlinks
+and nonregular files are excluded. Content-, format- or budget-rejected regular
+candidates remain triggers but receive no image capability. Physical paths use
+canonical Unicode decomposition and case folding only when volume metadata
+explicitly reports case-insensitive names; unknown capability keeps case
+distinctions. This handles `/tmp` → `/private/tmp`, Unicode spellings and creation
+of a differently cased missing image on a case-insensitive volume.
+
+Each stream uses file events, no-defer and watch-root flags, 0.1 s latency and the
+main dispatch queue. Exact referenced paths or strict ancestor-directory events
+trigger a debounced full reload. Must-scan, user/kernel-dropped and root-changed
+flags conservatively reload a nonempty watch set. Ordinary unreferenced/sibling
+and outside events are ignored, as is the source file's own exact event (existing
+source watchers handle it). Callback event paths are copied while valid, matched
+in memory and **never opened, resolved or used to grant access**. The retained C
+context uses a weak owner; stop/deinit break callbacks, stop/invalidate/release the
+stream, and queued events cannot publish after close.
 
 ## Content-anchored refresh and Follow Changes
 
@@ -104,7 +138,7 @@ document paths, block keys or scroll positions are stored by this preference.
 Markdown is treated as hostile.
 
 - **Source reads:** no-follow, nonblocking, regular files only, 10 MiB cap, identity re-checked with `fstat`. The source file is never written.
-- **Watchers:** strict no-follow on the final component. The parent directory is resolved with `realpath` before it is watched, which handles symlinked parents such as `/tmp` → `/private/tmp`.
+- **Watchers:** source descriptors retain strict no-follow on the final component. The parent directory is resolved with `realpath` before it is watched, which handles symlinked parents such as `/tmp` → `/private/tmp`. Asset event paths are trigger-only strings; only bounded policy-validated paths from a committed render are authoritative.
 - **Images:** must be strict descendants of the document directory after symlink resolution, re-checked through a second no-follow descriptor. Formats: PNG, JPEG, GIF, WebP. Budgets: 25 MiB per file, 64 MiB per batch, 256 unique files, 2,048 refs, 16,384 px per axis, 16 MP per image, 64 MP per batch, 32 frames.
 - **WebKit:** ephemeral data store, popups disabled, content rules block network schemes, CSP denies network/connect/frame/object, and the custom scheme serves only exact registered GETs.
 - **Renderer:** raw HTML is off and output is sanitized with DOMPurify. Custom-scheme URLs survive sanitization only if they match capabilities the native side issued.
@@ -118,7 +152,7 @@ Markdown is treated as hostile.
 | `scripts/install.sh --dry-run \| --install [--replace]` | Guarded copy to `~/Applications/MDViewer.app`, with staged verification and rollback. Never launches the app or sets defaults. |
 | `scripts/test-swift.sh` | Native Swift Testing suite (loads the Swift Testing macro plugin; do not use bare `swift test`). |
 | `scripts/test-webkit.sh` | Isolated debug/release verification through `verify_m0.py`: package, probe bundle, real WebKit, watcher scenarios, fixture hashes. |
-| `scripts/test-watchers.py` | Four watcher scenarios, each in its own process with a 10 s limit (FIFO and `/tmp`). |
+| `scripts/test-watchers.py` | Eight watcher scenarios / 44 checks, each in its own process with a 10 s limit (FIFO, source `/tmp`, image events/directory replacement/filtering/physical `/tmp`). |
 | `scripts/test-renderer-assets.mjs`, `test-reference-performance.mjs` | Renderer asset and performance checks (Node). |
 | `scripts/test-packaging.py`, `test-release-verification.py`, `verify_assets.py` | Bundle, signature, tamper and install-guard checks. |
 | `scripts/build-renderer.mjs` (`npm run build`) | Regenerates vendored renderer assets, notices and manifest from pinned npm deps. |

@@ -1,5 +1,93 @@
 # MDViewer verification evidence — implementation continuation
 
+## Referenced image auto-refresh — isolated gate (2026-10-30)
+
+**PASS: 24 Swift tests / 6 suites, 163 real-WebKit checks in both debug and
+release, and 44 watcher checks in eight independent process-timeout-bounded
+scenarios.** The actual app was compiled/packaged/inspected only, not launched,
+installed or registered. No Launch Services/default-handler operations or network
+access were performed; `MDVIEWER_M0_ALLOW_LAUNCH_SERVICES` remained unset. These
+results do not establish actual-app UI, Launch Services or formal v1 acceptance.
+
+### Regression and timing evidence
+
+- **B1/B2, native real events:** overwrite, atomic file replacement, deletion,
+  recreation, initially missing creation and whole-child-directory replacement
+  each complete exactly **one additional renderer callback** after a **500 ms**
+  quiet period. The final explicit native run measured **0.265–0.269 s** per image
+  mutation (asserted below **1 s**); every scenario retains its **10 s** process
+  kill/reap deadline. No debounce or timeout threshold was increased.
+- **B2/B3/B4, policy and matching:** native tests cover physical `/tmp`, hard-link
+  aliases, in-root versus escaping/dangling symlinks, FIFO exclusion, missing
+  nested paths, canonical Unicode spellings, both case modes and independent
+  existing/missing caps. Zero-byte, invalid, unsupported-format and oversized
+  regular files remain bounded triggers without gaining image capabilities.
+  Real event filtering ignores an unreferenced sibling, an escaping symlink's
+  target and an unrelated outside file for **500 ms**, then confirms Unicode
+  overwrite and case-insensitive missing `New.png` → `new.png` creation. This
+  fixture volume was case-insensitive; a case-sensitive real volume records an
+  explicit skip for that variant, while both modes have native seam coverage.
+- **B5, lifecycle/transactions:** exact source events are left to source watchers;
+  synthetic ancestor/loss/root events reload conservatively only for nonempty
+  sets. Replacement/empty/stopped sets and weak-owner teardown are tested.
+  Factory-injected stream failure leaves source edit/delete/recreate/manual
+  reload and last-good-warning behavior intact. Stale prepare/stage/commit,
+  failure and close cannot replace committed watch sets; an empty successful
+  commit clears them. `/tmp` close and held browser-render close prevent late
+  publication.
+- **B6, actual isolated WebKit:** image-only overwrite produces a fresh capability
+  URL and decoded dimensions; deletion produces a placeholder and recreation
+  decodes again. Initially missing/case-mismatched creation and zero-byte,
+  invalid/mid-write and over-budget rejection/recovery all work without changing
+  Markdown. Rejected generations expose no image element/capability. Atomic file
+  and whole-directory replacements settle at one completed render. Each of the
+  **12** image operations also asserts exactly one completed browser render after
+  **500 ms** quiet. Final timings: **0.259–0.268 s debug**, **0.260–0.267 s release**,
+  under the unchanged **1 s** per-operation ceiling. These are local-disk
+  measurements, not general volume or actual-app launch guarantees.
+
+### Commands and scoped results
+
+Python commands used `PYTHONDONTWRITEBYTECODE=1`. Local ignored evidence is under
+`.build/image-refresh-evidence/`; it is not promised in a fresh checkout.
+
+| Command | Final result |
+| --- | --- |
+| `swift build --build-system swiftbuild --product M0Integration` | `Build complete!` — dedicated probe only. |
+| `bash scripts/test-swift.sh` | `Test run with 24 tests in 6 suites passed`. |
+| `python3 scripts/test-watchers.py "$(swift build --build-system swiftbuild --show-bin-path)/M0Integration"` | `PASS 8 process-timeout-bounded watcher scenarios / 44 checks`. |
+| `bash scripts/test-webkit.sh` | `M0-M4 WEBKIT INTEGRATION PASSED: 163 checks`; embedded **24 Swift / 6 suites / 8 watcher scenarios / 44 checks**. |
+| `CONFIGURATION=release bash scripts/test-webkit.sh` | Same **163 WebKit / 24 Swift / 6 suites / 44 watcher** counts; `M0 NON-LAUNCH-SERVICES CHECKS PASSED`. |
+| `python3 scripts/verify_assets.py` | `PASS node-free vendored/packaged asset SHA-256/size/allowlist/notices verification`. |
+| `npm test` | `PASS 4 asset SHA-256 records, 12 locked production-package/license records, offline shell/CSS and 2 byte-identical regenerations`; `PASS reference syntax, 6 advisory timing cases and 1 single-block hashing case (5s child timeout, 4s ceiling)`. This runs both planned Node test scripts. |
+| `python3 scripts/test-packaging.py` | `PASS release signature/resources, 3 tamper rejections, 4 install guards, dry-run without Applications creation, shell syntax`. Rechecked after the release gate; no mutating install branch executed. |
+| `git diff --check` | PASS; no whitespace errors. No shell scripts changed; packaging checks their syntax. |
+
+### Red evidence, deviations and remaining scope
+
+- Task 1–4 red logs retain missing `ImageBatch.resolvedPaths`, `AssetWatcher`,
+  `assetWatcherFactory` and `RenderHost.onAssetPaths` compilation failures;
+  task 5's runner initially rejects the undispatched new scenario. Corresponding
+  green logs and final logs record the passing replacements. The new browser
+  image checks passed on their first run against the completed native wiring;
+  no production correction or renderer/vendor change was needed in task 6.
+- The first task 6 full run passed all new image assertions but failed the existing
+  `scroll cancels late-image viewport corrections` check. Its failure remains in
+  `task6-first.log`. Adding pixel-value diagnostics only at
+  `Tests/M0Integration/RefreshProbe.swift:628` was followed by three full passing
+  runs (debug twice, release once). No scroll algorithm or timing/tolerance was
+  changed; the intermittent old scroll-cancel result remains a residual risk,
+  not a claimed fix.
+- Whole-directory fixtures use `FileManager.moveItem` into the absent destination
+  rather than spawning `/bin/mv` (`Tests/M0Integration/WatcherProbe.swift:85`,
+  `Tests/M0Integration/RefreshProbe.swift:158`). This exercises the same physical
+  rename/replacement and avoids shell-process involvement; it never merges into
+  the old directory. Native stream cleanup uses a small owned resource/context
+  wrapper so deinit can release the C resource without actor-isolated teardown.
+- Existing slow-volume/shared serial I/O, root-directory rebinding, actual-app,
+  human accessibility/menu/multiwindow, installer mutation and Launch Services
+  acceptance gaps remain. No security protection or source-write policy changed.
+
 ## Content-anchored scrolling and Follow Changes — isolated gate (2026-10-30)
 
 **PASS: 19 Swift tests / 5 suites, 130 real-WebKit checks in both debug and
@@ -238,7 +326,9 @@ and successful replacement retires them without deleting concurrent stages.
 Actual-WebKit failure injection and practical scroll restoration PASS.
 
 Limitations: valid partially written UTF-8/empty files can be displayed after
-settling; debounce cannot infer writer intent. Asset-only changes need Cmd-R.
+settling; debounce cannot infer writer intent. At that historical stage image-only
+changes required Cmd-R; referenced image auto-refresh supersedes that limitation
+as recorded in the 2026-10-30 gate above.
 Reopening resolves retargeted symlinks; existing sessions follow their originally
 canonical path. Parent-directory removal/replacement is not automatically rebound.
 No formal M3 acceptance: independent review/manual app scenarios remain pending.

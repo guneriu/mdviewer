@@ -188,10 +188,19 @@ by default**; the setting is remembered application-wide and applies to existing
 and new viewer windows. The brief highlight respects Reduce Motion. First render,
 explicit heading navigation, find and zoom keep their usual behavior.
 
-**Asset-only changes need Cmd-R.** A valid partly written or empty file may briefly
-display after settling; debounce cannot infer an external writer's intent. An
-existing session follows its original canonical target: reopen after retargeting a
-symlink. Parent-directory replacement is not automatically rebound.
+**Referenced local images refresh automatically; Cmd-R still forces a reload.**
+Contained image overwrite, replacement, deletion and creation update the preview
+without editing Markdown. Watching is bounded to 256 existing regular-file paths
+and 256 missing paths from the last successful render. Unreferenced or outside
+file changes do not trigger image refresh; ancestor-directory changes and lost/root
+filesystem events conservatively reload. If image watching cannot start, Reload
+remains available.
+
+A valid partly written or empty file may briefly display after settling; debounce
+cannot infer an external writer's intent. An existing session follows its original
+canonical target: reopen after retargeting a symlink. Replacement of the document's
+root directory is not automatically rebound (replacing a child image directory is
+supported).
 
 ### Troubleshooting
 
