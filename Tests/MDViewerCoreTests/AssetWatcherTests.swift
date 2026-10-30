@@ -97,6 +97,49 @@ struct AssetWatcherTests {
         #expect(changes == 1)
     }
 
+    @Test @MainActor func inFlightMatchingIsNormalizedDirectoryAwareAndBounded() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try fm.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+        let pointer = try #require(realpath(root.path, nil)); defer { free(pointer) }
+        let physical = URL(fileURLWithPath: String(cString: pointer))
+        let image = physical.appendingPathComponent("img/café.png").path
+        let parent = physical.appendingPathComponent("img").path
+        let fileFlag = FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile)
+        let dirFlag = FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsDir)
+        for sensitive in [true, false] {
+            var changes = 0
+            let watcher = try AssetWatcher(root: root, document: physical.appendingPathComponent("doc.md"),
+                caseSensitive: sensitive, startsNativeStream: false) { changes += 1 }
+            defer { watcher.stop() }
+            let replay: ([String], [FSEventStreamEventFlags], Set<String>, Bool) -> Void = { paths, flags, watched, expected in
+                watcher.updatePaths([])
+                let before = changes
+                watcher.beginUpdate()
+                watcher.receive(paths: paths, flags: flags)
+                watcher.updatePaths(watched)
+                #expect(changes == before + (expected ? 1 : 0))
+                watcher.updatePaths(watched)
+                #expect(changes == before + (expected ? 1 : 0))
+            }
+            replay([physical.appendingPathComponent("img/cafe\u{301}.png").path], [fileFlag], [image], true)
+            replay([physical.appendingPathComponent("IMG/CAFÉ.PNG").path], [fileFlag], [image], !sensitive)
+            replay([parent], [fileFlag], [image], false)
+            replay([parent, parent], [fileFlag, dirFlag], [image], true)
+            replay([physical.appendingPathComponent("img-old").path], [dirFlag], [image], false)
+            let unrelated = (0..<513).map { physical.appendingPathComponent("log-\($0)").path }
+            replay(Array(unrelated.prefix(512)), Array(repeating: fileFlag, count: 512), [image], false)
+            replay(unrelated, Array(repeating: fileFlag, count: 513), [image], true)
+            replay(Array(repeating: unrelated[0], count: 2_000), Array(repeating: fileFlag, count: 2_000), [image], false)
+            for flag in [kFSEventStreamEventFlagMustScanSubDirs, kFSEventStreamEventFlagUserDropped,
+                         kFSEventStreamEventFlagKernelDropped, kFSEventStreamEventFlagRootChanged] {
+                replay([physical.path], [FSEventStreamEventFlags(flag)], [image], true)
+                replay([physical.path], [FSEventStreamEventFlags(flag)], [], false)
+            }
+        }
+    }
+
     @Test @MainActor func disappearingOwnerReleasesWatcher() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

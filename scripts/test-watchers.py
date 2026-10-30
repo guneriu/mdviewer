@@ -18,7 +18,7 @@ scenarios = (
     ("--private-tmp-refresh", "TMP REFRESH REGRESSION PASSED: 6 checks"),
     ("--asset-image-events", "ASSET IMAGE EVENTS PASSED: 10 checks"),
     ("--asset-image-directory", "ASSET IMAGE DIRECTORY PASSED: 2 checks"),
-    ("--asset-image-filtering", "ASSET IMAGE FILTERING PASSED: 5 checks"),
+    ("--asset-image-filtering", "ASSET IMAGE FILTERING PASSED: 6 checks"),
     ("--asset-tmp-parent", "ASSET TMP PARENT PASSED: 3 checks"),
 )
 for scenario, marker in scenarios:
@@ -41,4 +41,4 @@ for scenario, marker in scenarios:
         print(result.stdout, end="", flush=True)
         if result.returncode or marker not in result.stdout:
             raise SystemExit(f"Watcher regression failed: {scenario}\n{result.stderr}")
-print("PASS 8 process-timeout-bounded watcher scenarios / 44 checks")
+print("PASS 8 process-timeout-bounded watcher scenarios / 45 checks")

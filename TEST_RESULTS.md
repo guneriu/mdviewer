@@ -1,5 +1,35 @@
 # MDViewer verification evidence — implementation continuation
 
+## Final re-review: bounded in-flight asset replay (2026-10-30)
+
+**PASS: 30 Swift tests / 6 suites and 45 watcher checks / eight bounded scenarios.**
+The new matcher and continuous-write tests first failed with 19 issues (including
+the bounded render wait timing out), then passed without changing timeouts. While
+each render runs, 32 writes to one pre-created, unreferenced `build.log` are delivered;
+first render and manual reload each finish once and remain quiet for 650 ms.
+
+An initial fixture root-creation event sometimes arrived after publication, causing
+an intentionally valid ancestor replay even after pre-creating the log. Diagnostic
+logs confirmed this was not unrelated-file matching. The approved internal
+`startsNativeStream` initializer parameter defaults to true and is false only in
+injected-event tests; product code never passes it. This isolates those assertions
+from OS fixture-creation delivery without weakening real-event coverage. The real
+filtering probe now writes an unreferenced log every 50 ms for about two seconds,
+including a 150 ms in-flight render window, and asserts one render plus at most one
+extra. It completed once. Its existing 10 s child-process deadline is unchanged.
+The runner's initial stale five-check marker failed; it now verifies six filtering
+checks and 45 total checks. Newly referenced image events still replay exactly once
+on first render and a later disjoint watch set, then remain quiet for 350 ms.
+
+The pending window now retains at most 512 distinct normalized paths, preserving
+directory-event metadata. Tests cover canonical Unicode, both case modes,
+file-vs-directory ancestors, repeated unrelated paths, exactly 512 paths without
+replay, 513 paths with unknown-work replay, and each loss/root flag. Empty commits,
+cancel and stop still clear pending state. No event path is opened or resolved.
+This supersedes the earlier one-bit/conservative-unrelated-replay description.
+Red/green logs: `.build/image-refresh-final-review-evidence/bounded-replay-{red,green}.log`.
+These are isolated unit results, not actual-app or Launch Services acceptance.
+
 ## Image auto-refresh review corrections — isolated gate (2026-10-30)
 
 **PASS: 28 Swift tests / 6 suites, 163 WebKit checks in both debug and release,

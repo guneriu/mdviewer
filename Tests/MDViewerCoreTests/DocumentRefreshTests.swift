@@ -40,12 +40,13 @@ struct DocumentRefreshTests {
         let eventRender = existingPreview ? 2 : 1
         let refresh = DocumentRefresh(location: try DocumentLocation(file), invalidate: { generation += 1; return generation },
             assetWatcherFactory: { root, document, callback in
-                let created = try AssetWatcher(root: root, document: document, onChange: callback)
+                let created = try AssetWatcher(root: root, document: document, caseSensitive: true,
+                    startsNativeStream: false, onChange: callback)
                 watcher = created; return created
             }, render: { _, version in
                 renders += 1
                 // Simulate delivery after reading a newly referenced image but before commit.
-                let batch = AssetPolicy.images(references: renders >= eventRender ? ["new.png"] : [], root: root)
+                let batch = AssetPolicy.images(references: renders >= eventRender ? ["new.png"] : ["old.png"], root: root)
                 if renders == eventRender {
                     watcher?.receive(paths: Array(batch.resolvedPaths), flags: [0])
                 }
@@ -61,6 +62,47 @@ struct DocumentRefreshTests {
         try await wait { refresh.completedGeneration == generation && renders == eventRender + 1 }
         try await Task.sleep(nanoseconds: 350_000_000)
         #expect(renders == eventRender + 1)
+    }
+
+    @Test @MainActor func unreferencedWritesDuringRendersDoNotChainReloads() async throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("MDViewer-unreferenced-\(UUID().uuidString)")
+        try fm.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+        let file = root.appendingPathComponent("document.md")
+        let log = root.appendingPathComponent("build.log")
+        try Data("unchanged".utf8).write(to: file)
+        try Data().write(to: log) // Do not mix directory creation events into file-write filtering.
+        let pointer = try #require(realpath(root.path, nil)); defer { free(pointer) }
+        let physical = URL(fileURLWithPath: String(cString: pointer))
+        let image = physical.appendingPathComponent("image.png").path
+        var generation = 0, renders = 0
+        var watcher: AssetWatcher?
+        weak var session: DocumentRefresh?
+        let refresh = DocumentRefresh(location: try DocumentLocation(file), invalidate: { generation += 1; return generation },
+            assetWatcherFactory: { root, document, callback in
+                let created = try AssetWatcher(root: root, document: document, caseSensitive: true,
+                    startsNativeStream: false, onChange: callback)
+                watcher = created; return created
+            }, render: { _, version in
+                renders += 1
+                // Deliver continuous unrelated writes within every render window.
+                for index in 0..<32 {
+                    try Data("log \(index)".utf8).write(to: log)
+                    watcher?.receive(paths: [physical.appendingPathComponent("build.log").path], flags: [0])
+                }
+                session?.updateAssetPaths([image], generation: version)
+            })
+        session = refresh
+        defer { refresh.close() }
+        try refresh.start()
+        try await wait { refresh.completedGeneration > 0 }
+        try await Task.sleep(nanoseconds: 650_000_000)
+        #expect(renders == 1 && refresh.completedGeneration == generation)
+        refresh.reload()
+        try await wait { refresh.completedGeneration == generation && renders >= 2 }
+        try await Task.sleep(nanoseconds: 650_000_000)
+        #expect(renders == 2 && refresh.completedGeneration == generation)
     }
 
     @Test @MainActor func currentAssetPathsReloadUnchangedSourceAndCloseStopsEvents() async throws {

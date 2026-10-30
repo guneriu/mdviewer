@@ -192,9 +192,9 @@ explicit heading navigation, find and zoom keep their usual behavior.
 Contained image overwrite, replacement, deletion and creation update the preview
 without editing Markdown. Watching is bounded to 256 existing regular-file paths
 and 256 missing paths from the last successful render. Unreferenced or outside
-file changes do not normally trigger image refresh; ancestor-directory changes,
-lost/root filesystem events and events during rendering conservatively reload. If image watching cannot start, Reload
-remains available.
+file changes do not trigger image refresh, including during rendering. Ancestor-directory
+changes, lost/root filesystem events or more than 512 distinct event paths during a
+render conservatively reload. If image watching cannot start, Reload remains available.
 
 A valid partly written or empty file may briefly display after settling; debounce
 cannot infer an external writer's intent. An existing session follows its original

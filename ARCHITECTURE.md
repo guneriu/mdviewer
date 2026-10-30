@@ -76,13 +76,16 @@ closed renders cannot change it. An empty successful render clears it. Events us
 `reload(debounce: true)`, bypassing only the source snapshot filter, not any read,
 render, generation or capability checks. Startup failure logs a content-free
 fallback diagnostic once and leaves source watching and manual Reload available.
-Before rendering, the watcher opens a one-bit pending-event window, including on
-first render with an empty set. An in-root non-source event or loss/root flag
-records conservative work; publishing a nonempty current set consumes it and
-requests one debounced reload. Failed/cancelled renders and close clear the window.
-This prevents newly referenced image changes between batch read and commit from
-being lost, without retaining event paths; an in-flight unrelated in-root event
-may conservatively cause that single replay.
+Before rendering, the watcher opens a bounded pending-event window, including on
+first render with an empty set. It retains at most 512 normalized in-root non-source
+paths with directory-event metadata. Publishing a nonempty current set consumes
+the window and requests one debounced reload only for an exact new watched path
+or a directory event in its ancestor set. Overflow or loss/root flags mark unknown
+work and conservatively replay once. Failed/cancelled renders and close clear the
+window. Newly referenced image changes between batch read and commit are not lost;
+repeated unrelated writes do not chain renders. Retained event paths are never opened.
+An internal default-true `startsNativeStream` parameter is disabled only for injected
+unit events; product construction and real-event probes always start the stream.
 
 `AssetPolicy` collects at most **256 existing contained regular-file paths + 256
 missing paths** within the 2,048-reference scan limit. Existing ancestors of missing

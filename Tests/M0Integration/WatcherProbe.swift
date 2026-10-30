@@ -44,10 +44,17 @@ extension M0Integration {
         defer { if let outsideRoot { try? fm.removeItem(at: outsideRoot) } }
         try imageFixture(width: 1).write(to: image)
         try Data(references.map { "![image](\($0))" }.joined(separator: "\n").utf8).write(to: file)
-        var generation = 0, renders = 0
+        let buildLog = root.appendingPathComponent("build.log")
+        if scenario == "filtering" { try Data().write(to: buildLog) }
+        var generation = 0, renders = 0, busyRenders = 0
+        var busy = false
         var report: ((Set<String>, Int) -> Void)?
         let refresh = DocumentRefresh(location: try DocumentLocation(file), invalidate: { generation += 1; return generation }) { _, version in
             let paths = AssetPolicy.images(references: references, root: root).resolvedPaths
+            if busy {
+                busyRenders += 1
+                try await Task.sleep(nanoseconds: 150_000_000)
+            }
             report?(paths, version)
             renders += 1
         }
@@ -95,6 +102,17 @@ extension M0Integration {
                 try imageFixture(width: 3).write(to: imageDirectory.appendingPathComponent("cafe\u{301}.png"))
             }
             try await change("missing case-aware image creation") { try imageFixture(width: 4).write(to: missing) }
+            let beforeNoise = renders
+            busy = true
+            refresh.reload()
+            for index in 0..<40 {
+                try Data("build log \(index)".utf8).write(to: buildLog)
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+            busy = false
+            try await Task.sleep(nanoseconds: 500_000_000)
+            try check(busyRenders >= 1 && renders >= beforeNoise + 1 && renders <= beforeNoise + 2,
+                      "2-second unrelated write stream during rendering causes at most one extra render (\(renders - beforeNoise) renders)")
         case "tmp-parent":
             try await change("physical /tmp image match") { try imageFixture(width: 2).write(to: image) }
             let before = refresh.completedGeneration

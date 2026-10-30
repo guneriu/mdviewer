@@ -46,6 +46,25 @@
   after unchanged descriptor guards so atomic replacement of either reference is
   watched. Add explicit per-reference/rewrite and combined hard-link assertions.
 
+## Final re-review follow-up (2026-10-30)
+
+- [x] Reload chaining: failing bounded matcher and continuous unreferenced-write
+  render tests → record at most 512 normalized paths plus directory metadata;
+  replay only new watched/ancestor matches or overflow/loss/root unknown work →
+  30 Swift tests / 6 suites pass → commit `fix: bound in-flight asset event replay`.
+  Recheck newly referenced images on first render and a later disjoint watch set.
+  Approved internal `startsNativeStream` default-true seam disables OS delivery only
+  for injected-event tests; the real filtering probe adds two seconds of unrelated
+  writes during rendering with a fixed one-render-plus-one-extra bound. Its runner
+  verifies 45 checks / eight scenarios with unchanged 10 s child deadlines.
+- [ ] Scroll-cancel race (separate `fix(renderer):` commit): deterministic same-task
+  scroll then image-error probe → position ownership guard → regenerate renderer,
+  manifest and notices with offline dependencies → green; update the intermittent
+  entry in `TEST_RESULTS.md`, then all required suites including three debug gates.
+  Approved file-map extension: `web/renderer.js`, `Resources/Web/renderer.js`,
+  `vendor-manifest.json`, `THIRD_PARTY_NOTICES.md` and
+  `Resources/Notices/THIRD_PARTY_NOTICES.md` (regenerated).
+
 ## Source reconciliation and invariants
 
 `Sources/MDViewerCore/AssetGateway.swift:11-15` defines the **instance property** `ImageLimits.uniqueImages = 256`, matching the spec. Use that spelling; do not introduce a competing constant. `ImageBatch` currently exposes `references`, `resources`, counters, but no paths. The current policy throws one `forbiddenAsset` error for failed opens; record `errno == ENOENT` at the open site before throwing so only genuine missing candidates become triggers.

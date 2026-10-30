@@ -44,14 +44,16 @@ public final class AssetWatcher {
     private var ancestorPaths: Set<String> = []
     private var stopped = false
     private var updating = false
-    private var pendingEvent = false
+    private var pendingPaths: [String: Bool] = [:] // Value records whether a directory event occurred.
+    private var pendingUnknown = false
 
     public convenience init(root: URL, document: URL, onChange: @escaping () -> Void) throws {
         let sensitive = try root.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames != false
         try self.init(root: root, document: document, caseSensitive: sensitive, onChange: onChange)
     }
 
-    internal init(root: URL, document: URL, caseSensitive: Bool,
+    // startsNativeStream is disabled only by deterministic injected-event tests.
+    internal init(root: URL, document: URL, caseSensitive: Bool, startsNativeStream: Bool = true,
                   streamOperations: AssetStreamOperations = AssetStreamOperations(), onChange: @escaping () -> Void) throws {
         guard let pointer = realpath(root.path, nil) else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         defer { free(pointer) }
@@ -67,6 +69,7 @@ public final class AssetWatcher {
         self.rootPath = Self.normalize(physicalRoot, caseSensitive: caseSensitive)
         self.documentPath = Self.normalize(source, caseSensitive: caseSensitive)
         self.onChange = onChange
+        guard startsNativeStream else { return }
         lifetime.context.receive = { [weak self] paths, flags in self?.receive(paths: paths, flags: flags) }
         var context = FSEventStreamContext(version: 0,
             info: Unmanaged.passUnretained(lifetime.context).toOpaque(),
@@ -100,13 +103,14 @@ public final class AssetWatcher {
 
     internal func beginUpdate() {
         guard !stopped else { return }
+        cancelUpdate()
         updating = true
-        pendingEvent = false
     }
 
     internal func cancelUpdate() {
         updating = false
-        pendingEvent = false
+        pendingPaths.removeAll()
+        pendingUnknown = false
     }
 
     public func updatePaths(_ paths: Set<String>) {
@@ -124,7 +128,9 @@ public final class AssetWatcher {
                 parent = (parent as NSString).deletingLastPathComponent
             }
         }
-        let replay = pendingEvent && !watchedPaths.isEmpty
+        let replay = !watchedPaths.isEmpty && (pendingUnknown || pendingPaths.contains { path, isDirectory in
+            watchedPaths.contains(path) || (isDirectory && ancestorPaths.contains(path))
+        })
         cancelUpdate()
         if replay { onChange() }
     }
@@ -134,10 +140,16 @@ public final class AssetWatcher {
         let rescanFlags = FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped | kFSEventStreamEventFlagKernelDropped | kFSEventStreamEventFlagRootChanged)
         for (path, flag) in zip(paths, flags) {
             let key = normalize(path)
-            // Until commit, the next image set is unknown. A single bit bounds replay
-            // conservatively without retaining event paths or granting them access.
-            if updating, flag & rescanFlags != 0 || (key != documentPath && (key == rootPath || key.hasPrefix(rootPath + "/"))) {
-                pendingEvent = true
+            if updating {
+                if flag & rescanFlags != 0 {
+                    pendingUnknown = true
+                } else if !pendingUnknown, key != documentPath, key == rootPath || key.hasPrefix(rootPath + "/") {
+                    if pendingPaths[key] == nil && pendingPaths.count == 512 {
+                        pendingUnknown = true
+                    } else {
+                        pendingPaths[key] = (pendingPaths[key] ?? false) || flag & FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsDir) != 0
+                    }
+                }
             }
             guard !watchedPaths.isEmpty else { continue }
             if flag & rescanFlags != 0 { onChange(); return }
