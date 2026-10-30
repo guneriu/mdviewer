@@ -72,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var currentDocument: DocumentWindow? { documents.values.first { $0.window === NSApp.keyWindow } }
     @objc private func showAbout(_ sender: Any?) {
-        NSApp.orderFrontStandardAboutPanel(options: [.credits: AboutCredits.attributedString()])
+        NSApp.orderFrontStandardAboutPanel(options: AboutCredits.panelOptions())
     }
     @objc private func findDocument(_ sender: Any?) { currentDocument?.showFind() }
     @objc private func zoomIn(_ sender: Any?) { currentDocument?.zoom(by: 1.2) }

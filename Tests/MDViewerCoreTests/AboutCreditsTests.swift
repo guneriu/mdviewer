@@ -19,4 +19,10 @@ struct AboutCreditsTests {
         let color = credits.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
         #expect(color == NSColor.labelColor)
     }
+
+    @Test @MainActor func panelHidesBuildNumberAndCarriesCredits() {
+        let options = AboutCredits.panelOptions()
+        #expect(options[.version] as? String == "")
+        #expect((options[.credits] as? NSAttributedString)?.string == AboutCredits.attributedString().string)
+    }
 }
