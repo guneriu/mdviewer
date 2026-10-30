@@ -62,11 +62,13 @@ struct AssetPolicyTests {
         #expect(rejected.resources.isEmpty && rejected.resolvedPaths == [physical.appendingPathComponent("a.png").path])
         try png.write(to: root.appendingPathComponent("a.png"))
         #expect(AssetPolicy.images(references: ["a.png"], root: root).resources.count == 1)
+        // Keep independent cap/budget checks separate from the hard-link fixture.
+        try png.write(to: root.appendingPathComponent("cap.png"))
         var limits = ImageLimits(); limits.uniqueImages = 1
-        let bounded = AssetPolicy.images(references: ["a.png", "café.png", "one.png", "two.png"], root: root, limits: limits)
-        #expect(bounded.resolvedPaths == [physical.appendingPathComponent("a.png").path, physical.appendingPathComponent("one.png").path])
+        let bounded = AssetPolicy.images(references: ["cap.png", "café.png", "one.png", "two.png"], root: root, limits: limits)
+        #expect(bounded.resolvedPaths == [physical.appendingPathComponent("cap.png").path, physical.appendingPathComponent("one.png").path])
         limits = ImageLimits(); limits.totalBytes = 0
-        let overBudget = AssetPolicy.images(references: ["a.png"], root: root, limits: limits)
+        let overBudget = AssetPolicy.images(references: ["cap.png"], root: root, limits: limits)
         #expect(overBudget.resources.isEmpty && overBudget.resolvedPaths.count == 1 && overBudget.bytesRead == 0)
     }
 
