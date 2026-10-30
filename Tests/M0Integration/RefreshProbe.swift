@@ -113,5 +113,118 @@ extension M0Integration {
         let restored = try await js(host, "return scrollY") as! Double
         try check(position > 0 && abs(restored - position) < 5, "successful refresh preserves practical scroll offset")
         try check(!host.gateway.containsCapability(retainedImage), "successful replacement retires previous committed image capabilities")
+        try await testContentAnchors(host, root: root)
+    }
+
+    static func testContentAnchors(_ host: RenderHost, root: URL) async throws {
+        let original = (0..<300).map { "Paragraph \($0)\n\n" }.joined()
+        try await render(host, source: original, root: root)
+        _ = try await js(host, "scrollTo(0, 900); return true")
+        try await Task.sleep(nanoseconds: 80_000_000)
+        let anchor = try await js(host, """
+            const node = [...document.querySelector('#document').children]
+              .find(n => n.getBoundingClientRect().bottom > 0);
+            return { text: node.textContent, top: node.getBoundingClientRect().top };
+            """) as! [String: Any]
+        let prefix = (0..<50).map { "Inserted \($0)\n\n" }.joined()
+        try await render(host, source: prefix + original, root: root)
+        let restored = try await js(host, """
+            const node = [...document.querySelector('#document').children].find(n => n.textContent === text);
+            return node.getBoundingClientRect().top;
+            """, arguments: ["text": anchor["text"]!]) as! Double
+        try check(abs(restored - (anchor["top"] as! Double)) < 5,
+                  "inserting 50 blocks above preserves visible content within 5 px")
+        try await testLateImageAnchors(host, root: root, original: original)
+    }
+
+    static func testLateImageAnchors(_ host: RenderHost, root: URL, original: String) async throws {
+        let name = UUID().uuidString + ".png"
+        let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 40, pixelsHigh: 1600,
+                                      bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                      isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        let image = root.appendingPathComponent(name)
+        try bitmap.representation(using: .png, properties: [:])!.write(to: image)
+        defer { try? FileManager.default.removeItem(at: image) }
+        for error in [false, true] {
+            try await render(host, source: original, root: root)
+            _ = try await js(host, "scrollTo(0, 900); return true")
+            try await Task.sleep(nanoseconds: 80_000_000)
+            _ = try await js(host, """
+                window.imageAnchor = [...document.querySelector('#document').children]
+                  .find(n => n.getBoundingClientRect().bottom > 0).textContent;
+                window.imageTop = [...document.querySelector('#document').children]
+                  .find(n => n.textContent === window.imageAnchor).getBoundingClientRect().top;
+                window.imageEventDone = false;
+                window.imageCommit = window.commitMarkdown;
+                window.commitMarkdown = generation => {
+                  const accepted = window.imageCommit(generation);
+                  const image = document.querySelector('#document img');
+                  const url = image.src;
+                  image.removeAttribute('src');
+                  image.addEventListener(fail ? 'error' : 'load', () => window.imageEventDone = true, {once:true});
+                  setTimeout(() => {
+                    if (fail) image.height = 1600;
+                    image.src = fail ? 'mdviewer://bundle/missing-image.png' : url;
+                  }, 150);
+                  return accepted;
+                };
+                return true;
+                """, arguments: ["fail": error])
+            try await render(host, source: "![tall](\(name))\n\n" + original, root: root)
+            let immediate = try await js(host, "return [...document.querySelector('#document').children].find(n => n.textContent === window.imageAnchor).getBoundingClientRect().top - window.imageTop") as! Double
+            try check(abs(immediate) < 5, "late image \(error ? "error" : "load") preserves immediate anchor within 5 px")
+            try await waitUntil("delayed image event") {
+                try await js(host, "return window.imageEventDone && (fail || (document.querySelector('#document img').complete && document.querySelector('#document img').naturalWidth > 0))", arguments: ["fail": error]) as? Bool == true
+            }
+            let settled = try await js(host, "return [...document.querySelector('#document').children].find(n => n.textContent === window.imageAnchor).getBoundingClientRect().top - window.imageTop") as! Double
+            try check(abs(settled) < 5, "late image \(error ? "error" : "load") settles anchor within 5 px")
+            _ = try await js(host, "window.commitMarkdown = window.imageCommit; return true")
+        }
+        for input in ["scroll", "wheel", "keydown", "fragment"] {
+            try await render(host, source: "![tall](\(name))\n\n" + original, root: root)
+            try await waitUntil("cancellation image decode") { try await js(host, "return document.querySelector('#document img').complete") as? Bool == true }
+            _ = try await js(host, "scrollTo(0, 2500); return true")
+            try await Task.sleep(nanoseconds: 80_000_000)
+            try await render(host, source: "![tall](\(name))\n\n" + original, root: root)
+            _ = try await js(host, """
+                if (input === 'scroll') scrollTo(0, scrollY + 120);
+                else if (input === 'fragment') window.scrollToFragment('missing');
+                else dispatchEvent(new Event(input));
+                return true;
+                """, arguments: ["input": input])
+            try await Task.sleep(nanoseconds: 80_000_000)
+            let uncorrected = try await js(host, """
+                const before = scrollY;
+                const image = document.querySelector('#document img');
+                image.style.height = '2400px';
+                image.dispatchEvent(new Event('error'));
+                return Math.abs(scrollY - before) < 5;
+                """) as? Bool
+            try check(uncorrected == true, "\(input) cancels late-image viewport corrections")
+        }
+        _ = try await js(host, """
+            const container = document.querySelector('#document');
+            window.imageListeners = new Set();
+            window.addImageListener = container.addEventListener;
+            window.removeImageListener = container.removeEventListener;
+            container.addEventListener = function(type, listener, options) {
+              if (type === 'load' || type === 'error') window.imageListeners.add(listener);
+              return window.addImageListener.call(this, type, listener, options);
+            };
+            container.removeEventListener = function(type, listener, options) {
+              window.imageListeners.delete(listener);
+              return window.removeImageListener.call(this, type, listener, options);
+            };
+            return true;
+            """)
+        try await render(host, source: original, root: root)
+        _ = try await js(host, "window.previousImageListeners = [...window.imageListeners]; return true")
+        try await render(host, source: original, root: root)
+        let retired = try await js(host, "return window.previousImageListeners.length > 0 && window.previousImageListeners.every(l => !window.imageListeners.has(l)) && window.imageListeners.size > 0") as? Bool
+        try check(retired == true, "second accepted commit retires previous image settling listeners")
+        try await Task.sleep(nanoseconds: 1_050_000_000)
+        let expired = try await js(host, "return window.imageListeners.size === 0") as? Bool
+        try check(expired == true, "image settling listeners expire after one second")
+        _ = try await js(host, "const c = document.querySelector('#document'); c.addEventListener = window.addImageListener; c.removeEventListener = window.removeImageListener; return true")
     }
 }

@@ -57,6 +57,56 @@ window.prepareMarkdown = source => {
   });
   return { images: [...images], links: [...links] };
 };
+function blockEntries(container) {
+  const counts = new Map();
+  return [...container.children].map(node => {
+    const text = node.textContent;
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < text.length; i++) {
+      hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193) >>> 0;
+    }
+    const base = `${node.tagName}:${hash.toString(16)}`;
+    const occurrence = (counts.get(base) || 0) + 1;
+    counts.set(base, occurrence);
+    return { node, key: `${base}#${occurrence}` };
+  });
+}
+function clampScroll(x, y) {
+  scrollTo(Math.max(0, Math.min(x, Math.max(0, document.documentElement.scrollWidth - innerWidth))),
+           Math.max(0, Math.min(y, Math.max(0, document.documentElement.scrollHeight - innerHeight))));
+}
+function restoreAnchor(anchor, position) {
+  clampScroll(position.x, anchor ? scrollY + anchor.node.getBoundingClientRect().top - anchor.top : position.y);
+}
+let committedBlocks = [];
+let stopSettling = () => {};
+function settleImages(container, generation, anchor, position) {
+  let ownedPosition = { x: scrollX, y: scrollY };
+  const correct = event => {
+    if (event.target.tagName !== 'IMG' || container.dataset.generation !== String(generation)) return;
+    restoreAnchor(anchor, position);
+    ownedPosition = { x: scrollX, y: scrollY };
+  };
+  const onScroll = () => {
+    if (scrollX !== ownedPosition.x || scrollY !== ownedPosition.y) cleanup();
+  };
+  const cleanup = () => {
+    clearTimeout(timer);
+    container.removeEventListener('load', correct, true);
+    container.removeEventListener('error', correct, true);
+    removeEventListener('wheel', cleanup, true);
+    removeEventListener('keydown', cleanup, true);
+    removeEventListener('scroll', onScroll, true);
+    stopSettling = () => {};
+  };
+  const timer = setTimeout(cleanup, 1000);
+  container.addEventListener('load', correct, true);
+  container.addEventListener('error', correct, true);
+  addEventListener('wheel', cleanup, true);
+  addEventListener('keydown', cleanup, true);
+  addEventListener('scroll', onScroll, true);
+  stopSettling = cleanup;
+}
 let currentGeneration = 0;
 let pendingDOM = null;
 window.setRenderGeneration = generation => {
@@ -128,22 +178,41 @@ window.stageMarkdown = (source, images, links, generation) => {
     empty.textContent = 'Empty document'; staging.content.append(empty);
   }
   if (generation !== currentGeneration) return false;
-  pendingDOM = { generation, content: staging.content };
+  pendingDOM = { generation, content: staging.content, blocks: blockEntries(staging.content) };
   return true;
 };
 window.commitMarkdown = generation => {
   if (generation !== currentGeneration || pendingDOM?.generation !== generation) return false;
+  stopSettling();
   const position = { x: scrollX, y: scrollY };
-  document.getElementById('document').replaceChildren(pendingDOM.content);
-  document.getElementById('document').dataset.generation = String(generation);
+  const oldGeometry = committedBlocks.map(({ node, key }) => {
+    const rect = node.getBoundingClientRect();
+    return { key, top: rect.top, bottom: rect.bottom };
+  });
+  const newByKey = new Map(pendingDOM.blocks.map(({ node, key }) => [key, node]));
+  const anchorIndex = oldGeometry.findIndex(block => block.bottom > 0);
+  let anchor = null;
+  for (let i = anchorIndex; i >= 0; i--) {
+    const saved = oldGeometry[i];
+    if (newByKey.has(saved.key)) {
+      anchor = { node: newByKey.get(saved.key), top: saved.top };
+      break;
+    }
+  }
+  const container = document.getElementById('document');
+  container.replaceChildren(pendingDOM.content);
+  container.dataset.generation = String(generation);
+  committedBlocks = pendingDOM.blocks;
   pendingDOM = null;
-  scrollTo(position.x, Math.min(position.y, Math.max(0, document.documentElement.scrollHeight - innerHeight)));
+  restoreAnchor(anchor, position);
+  settleImages(container, generation, anchor, position);
   return true;
 };
 // Kept as a trusted API for isolated renderer fixtures; production stages and commits separately.
 window.renderMarkdown = (source, images, links, generation = currentGeneration) =>
   window.stageMarkdown(source, images, links, generation) && window.commitMarkdown(generation);
 window.scrollToFragment = fragment => {
+  stopSettling();
   const id = `user-content-heading-${fragment}`;
   const heading = document.getElementById(id) || document.getElementById(`user-content-heading-${slug(fragment)}`);
   if (heading) { heading.scrollIntoView(); heading.setAttribute('tabindex', '-1'); heading.focus({ preventScroll: true }); }

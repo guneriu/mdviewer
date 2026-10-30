@@ -195,8 +195,8 @@
   "assets": [
     {
       "path": "Resources/Web/renderer.js",
-      "bytes": 202450,
-      "sha256": "07d1125b16f8dfdd161da48456ce53d2942b0c0a0c857d5a66f46c739722d02c"
+      "bytes": 203827,
+      "sha256": "3af78963fa88c05d74976561cd73a2548abfeebcccb9a1100e97c925cf6184f1"
     },
     {
       "path": "Resources/Web/shell.html",
