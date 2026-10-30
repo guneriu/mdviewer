@@ -33,6 +33,8 @@ public final class AssetWatcher {
     private var watchedPaths: Set<String> = []
     private var ancestorPaths: Set<String> = []
     private var stopped = false
+    private var updating = false
+    private var pendingEvent = false
 
     public convenience init(root: URL, document: URL, onChange: @escaping () -> Void) throws {
         let sensitive = try root.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames != false
@@ -84,6 +86,17 @@ public final class AssetWatcher {
     }
     private func normalize(_ path: String) -> String { Self.normalize(path, caseSensitive: caseSensitive) }
 
+    internal func beginUpdate() {
+        guard !stopped else { return }
+        updating = true
+        pendingEvent = false
+    }
+
+    internal func cancelUpdate() {
+        updating = false
+        pendingEvent = false
+    }
+
     public func updatePaths(_ paths: Set<String>) {
         guard !stopped, paths.count <= 512 else { return }
         watchedPaths = Set(paths.map { normalize($0) })
@@ -99,14 +112,23 @@ public final class AssetWatcher {
                 parent = (parent as NSString).deletingLastPathComponent
             }
         }
+        let replay = pendingEvent && !watchedPaths.isEmpty
+        cancelUpdate()
+        if replay { onChange() }
     }
 
     internal func receive(paths: [String], flags: [FSEventStreamEventFlags]) {
-        guard !stopped, !watchedPaths.isEmpty, paths.count == flags.count else { return }
+        guard !stopped, paths.count == flags.count else { return }
         let rescanFlags = FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped | kFSEventStreamEventFlagKernelDropped | kFSEventStreamEventFlagRootChanged)
         for (path, flag) in zip(paths, flags) {
-            if flag & rescanFlags != 0 { onChange(); return }
             let key = normalize(path)
+            // Until commit, the next image set is unknown. A single bit bounds replay
+            // conservatively without retaining event paths or granting them access.
+            if updating, flag & rescanFlags != 0 || (key != documentPath && (key == rootPath || key.hasPrefix(rootPath + "/"))) {
+                pendingEvent = true
+            }
+            guard !watchedPaths.isEmpty else { continue }
+            if flag & rescanFlags != 0 { onChange(); return }
             if key == documentPath { continue }
             if watchedPaths.contains(key) || (flag & FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsDir) != 0 && ancestorPaths.contains(key)) {
                 onChange(); return
@@ -118,6 +140,7 @@ public final class AssetWatcher {
         guard !stopped else { return }
         stopped = true
         lifetime.stop()
+        cancelUpdate()
         watchedPaths.removeAll(); ancestorPaths.removeAll()
     }
 }

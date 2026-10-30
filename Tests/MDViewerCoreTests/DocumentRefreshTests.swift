@@ -25,6 +25,43 @@ private actor RetryingReads {
 private struct RefreshTimeout: Error { }
 
 struct DocumentRefreshTests {
+    @Test(arguments: [false, true]) @MainActor
+    func assetEventsDuringRenderReplayAfterNewPathsCommit(existingPreview: Bool) async throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try fm.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+        let file = root.appendingPathComponent("document.md")
+        try Data("unchanged".utf8).write(to: file)
+        var generation = 0, renders = 0
+        var watcher: AssetWatcher?
+        weak var session: DocumentRefresh?
+        let eventRender = existingPreview ? 2 : 1
+        let refresh = DocumentRefresh(location: try DocumentLocation(file), invalidate: { generation += 1; return generation },
+            assetWatcherFactory: { root, document, callback in
+                let created = try AssetWatcher(root: root, document: document, onChange: callback)
+                watcher = created; return created
+            }, render: { _, version in
+                renders += 1
+                // Simulate delivery after reading a newly referenced image but before commit.
+                let batch = AssetPolicy.images(references: renders >= eventRender ? ["new.png"] : [], root: root)
+                if renders == eventRender {
+                    watcher?.receive(paths: Array(batch.resolvedPaths), flags: [0])
+                }
+                session?.updateAssetPaths(batch.resolvedPaths, generation: version)
+            })
+        session = refresh
+        defer { refresh.close() }
+        try refresh.start()
+        if existingPreview {
+            try await wait { refresh.completedGeneration > 0 }
+            refresh.reload()
+        }
+        try await wait { refresh.completedGeneration == generation && renders == eventRender + 1 }
+        try await Task.sleep(nanoseconds: 350_000_000)
+        #expect(renders == eventRender + 1)
+    }
+
     @Test @MainActor func currentAssetPathsReloadUnchangedSourceAndCloseStopsEvents() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

@@ -85,8 +85,14 @@ filesystem I/O is performed in the event callback.
 - `start()` creates the `AssetWatcher` after the directory watcher. If FSEvents stream
   creation fails, refresh still works without image watching: it logs one diagnostic
   line with no document content, and keeps the existing behavior (Cmd-R).
+- Before awaiting the renderer, begin a bounded in-flight event window. Keep one
+  pending bit if any non-source event under the physical root (or any loss/root
+  flag) arrives, even when the previous watch set is empty. No event path is retained.
 - `updateAssetPaths(_ paths: Set<String>, generation: Int)` replaces the watch set if
-  the generation is current.
+  the generation is current, ends that window and requests one debounced reload
+  when an event was recorded and the new set is nonempty. This conservative replay
+  covers newly referenced images changed between batch read and commit, including
+  the first render. A failed/cancelled current render or close clears the window.
 - An asset event calls the existing `reload(debounce: true)`. It does not compare the
   Markdown snapshot, so an unchanged `.md` still re-renders. Existing generation,
   cancellation, retry, warning, and close rules apply unchanged.
@@ -104,6 +110,8 @@ filesystem I/O is performed in the event callback.
   Filtering uses watch/ancestor set lookups per path, with no I/O. Unreferenced
   file events do not trigger reloads; ancestor-directory and loss/root events may
   conservatively reload because their affected descendants are not individually known.
+  During rendering, an unreferenced in-root event may also cause one replay after
+  a nonempty committed set: the next references are not yet authoritative.
 
 ## Security and contract impact
 

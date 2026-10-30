@@ -80,6 +80,10 @@ public final class DocumentRefresh {
                 }
                 try self.requireCurrent(generation)
                 guard let source else { throw failure }
+                self.assetWatcher?.beginUpdate()
+                defer {
+                    if self.latest == generation { self.assetWatcher?.cancelUpdate() }
+                }
                 try await self.render(source, generation)
                 try self.requireCurrent(generation)
                 self.hasGoodPreview = true; self.completedGeneration = generation

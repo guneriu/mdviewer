@@ -54,6 +54,49 @@ struct AssetWatcherTests {
         }
     }
 
+    @Test @MainActor func inFlightEventsReplayOnceAndClearOnEmptyCancelOrStop() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try fm.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+        let pointer = try #require(realpath(root.path, nil)); defer { free(pointer) }
+        let physical = URL(fileURLWithPath: String(cString: pointer))
+        let source = physical.appendingPathComponent("doc.md")
+        let image = physical.appendingPathComponent("new.png").path
+        var changes = 0
+        let watcher = try AssetWatcher(root: root, document: source) { changes += 1 }
+        defer { watcher.stop() }
+        watcher.beginUpdate()
+        watcher.receive(paths: [source.path, physical.path + "-sibling/new.png"], flags: [0, 0])
+        watcher.updatePaths([image])
+        #expect(changes == 0)
+        watcher.updatePaths([])
+        watcher.beginUpdate()
+        watcher.receive(paths: [image, image], flags: [0, 0])
+        watcher.updatePaths([image])
+        #expect(changes == 1)
+        watcher.updatePaths([image])
+        #expect(changes == 1)
+        watcher.updatePaths([])
+        watcher.beginUpdate()
+        watcher.receive(paths: [image], flags: [0])
+        watcher.updatePaths([])
+        watcher.updatePaths([image])
+        #expect(changes == 1)
+        watcher.updatePaths([])
+        watcher.beginUpdate()
+        watcher.receive(paths: [image], flags: [0])
+        watcher.cancelUpdate()
+        watcher.updatePaths([image])
+        #expect(changes == 1)
+        watcher.updatePaths([])
+        watcher.beginUpdate()
+        watcher.receive(paths: [image], flags: [0])
+        watcher.stop()
+        watcher.updatePaths([image])
+        #expect(changes == 1)
+    }
+
     @Test @MainActor func disappearingOwnerReleasesWatcher() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

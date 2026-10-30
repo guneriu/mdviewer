@@ -27,6 +27,14 @@
 - Modify `Tests/M0Integration/RefreshProbe.swift`: real WebKit changed image/placeholder and committed-path reporting tests, called from existing refresh flow.
 - Final docs: `README.md`, `ARCHITECTURE.md`, `TEST_RESULTS.md`.
 
+## Review follow-up (2026-10-30)
+
+- [x] P1: Red → restore standardized in-root traversal → green; escaping paths
+  remain excluded from rendering and watch sets, with descriptor guards unchanged.
+- [x] P2a: Red first-render/new-reference event-loss tests → one-bit in-flight
+  recording and debounced replay after current nonempty publication → green.
+  Clear pending state on failure/cancellation/empty commit/stop; never read event paths.
+
 ## Source reconciliation and invariants
 
 `Sources/MDViewerCore/AssetGateway.swift:11-15` defines the **instance property** `ImageLimits.uniqueImages = 256`, matching the spec. Use that spelling; do not introduce a competing constant. `ImageBatch` currently exposes `references`, `resources`, counters, but no paths. The current policy throws one `forbiddenAsset` error for failed opens; record `errno == ENOENT` at the open site before throwing so only genuine missing candidates become triggers.
