@@ -29,8 +29,10 @@ open -a ~/Applications/MDViewer.app README.md   # first launch
 
 To make it the default viewer, select a `.md` file in Finder → **Get Info →
 Open with → MDViewer → Change All**. Updating uses `--install --replace` after
-quitting the app. The sections below explain each step, its safety guards, and
-how to uninstall.
+quitting the app. To check which build you're running, choose **MDViewer → About
+MDViewer**; it shows the version from `Packaging/Info.plist` (bump
+`CFBundleShortVersionString`/`CFBundleVersion` there for each release). The sections
+below explain each step, its safety guards, and how to uninstall.
 
 To see every supported feature at once, open
 [`examples/showcase/showcase.md`](examples/showcase/showcase.md). It doubles as a manual
