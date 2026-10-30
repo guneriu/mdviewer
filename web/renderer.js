@@ -99,6 +99,7 @@ function settleImages(container, generation, anchor, position) {
   let ownedPosition = { x: scrollX, y: scrollY };
   const correct = event => {
     if (event.target.tagName !== 'IMG' || container.dataset.generation !== String(generation)) return;
+    if (scrollX !== ownedPosition.x || scrollY !== ownedPosition.y) { cleanup(); return; }
     restoreAnchor(anchor, position);
     ownedPosition = { x: scrollX, y: scrollY };
   };

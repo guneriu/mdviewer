@@ -57,10 +57,12 @@
   for injected-event tests; the real filtering probe adds two seconds of unrelated
   writes during rendering with a fixed one-render-plus-one-extra bound. Its runner
   verifies 45 checks / eight scenarios with unchanged 10 s child deadlines.
-- [ ] Scroll-cancel race (separate `fix(renderer):` commit): deterministic same-task
-  scroll then image-error probe → position ownership guard → regenerate renderer,
-  manifest and notices with offline dependencies → green; update the intermittent
-  entry in `TEST_RESULTS.md`, then all required suites including three debug gates.
+- [x] Scroll-cancel race (separate `fix(renderer):` commit): deterministic same-task
+  scroll then image-error probe (680.0 px red) → position ownership guard → regenerate
+  renderer, manifest and notices with offline dependencies → 0.0 px green; update
+  the intermittent entry in `TEST_RESULTS.md`. All seven required commands pass:
+  30 Swift tests / six suites, 45 watcher checks, 163 WebKit checks each in three
+  consecutive debug gates and one release gate. No timing threshold was raised.
   Approved file-map extension: `web/renderer.js`, `Resources/Web/renderer.js`,
   `vendor-manifest.json`, `THIRD_PARTY_NOTICES.md` and
   `Resources/Notices/THIRD_PARTY_NOTICES.md` (regenerated).

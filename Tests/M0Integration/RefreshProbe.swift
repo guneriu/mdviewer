@@ -609,19 +609,25 @@ extension M0Integration {
             try await Task.sleep(nanoseconds: 80_000_000)
             try await render(host, source: "![tall](\(name))\n\n" + original, root: root)
             _ = try await js(host, """
-                if (input === 'scroll') scrollTo(0, scrollY + 120);
-                else if (input === 'fragment') window.scrollToFragment('missing');
-                else if (input !== 'none') dispatchEvent(new Event(input));
+                if (input === 'fragment') window.scrollToFragment('missing');
+                else if (input !== 'none' && input !== 'scroll') dispatchEvent(new Event(input));
                 return true;
                 """, arguments: ["input": input])
-            try await Task.sleep(nanoseconds: 80_000_000)
+            if input != "scroll" { try await Task.sleep(nanoseconds: 80_000_000) }
             let correction = try await js(host, """
+                let scrollEvents = 0;
+                const countScroll = () => scrollEvents++;
+                addEventListener('scroll', countScroll, true);
+                // Same JS task: move the viewport, then error before scroll dispatch.
+                if (input === 'scroll') scrollTo(0, scrollY + 120);
                 const before = scrollY;
                 const image = document.querySelector('#document img');
                 image.style.height = '2400px';
                 image.dispatchEvent(new Event('error'));
+                removeEventListener('scroll', countScroll, true);
+                if (input === 'scroll' && scrollEvents !== 0) throw new Error('scroll event intervened before image error');
                 return Math.abs(scrollY - before);
-                """) as! Double
+                """, arguments: ["input": input]) as! Double
             if input == "none" {
                 try check(correction > 100, "without input, late-image error re-anchors the viewport by more than 100 px")
             } else {
