@@ -4,6 +4,16 @@ import MDViewerCore
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var documents: [URL: DocumentWindow] = [:]
+    private let followChangesItem = NSMenuItem(title: "Follow Changes",
+        action: #selector(toggleFollowChanges(_:)), keyEquivalent: "f")
+    private var followChanges: Bool { UserDefaults.standard.bool(forKey: "MDViewerFollowChanges") }
+
+    @objc private func toggleFollowChanges(_ sender: Any?) {
+        let enabled = !followChanges
+        UserDefaults.standard.set(enabled, forKey: "MDViewerFollowChanges")
+        followChangesItem.state = enabled ? .on : .off
+        for document in documents.values { document.setFollowChanges(enabled) }
+    }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         buildMenus()
@@ -27,7 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     diagnostic("focus", extra: ["canonical": key.path])
                     continue
                 }
-                let controller = try DocumentWindow(location: location)
+                let controller = try DocumentWindow(location: location, followChanges: followChanges)
                 documents[key] = controller
                 controller.onOpenMarkdown = { [weak self] url, fragment in
                     guard let self else { return }
@@ -110,6 +120,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         equalZoom.isHidden = true
         equalZoom.allowsKeyEquivalentWhenHidden = true
         view.addItem(equalZoom)
+        followChangesItem.target = self
+        followChangesItem.keyEquivalentModifierMask = [.command, .shift]
+        followChangesItem.state = followChanges ? .on : .off
+        view.addItem(followChangesItem)
         let window = menu("Window")
         add(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
         add(window, "Zoom", #selector(NSWindow.performZoom(_:)), "")

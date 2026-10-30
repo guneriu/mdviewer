@@ -15,7 +15,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate {
     var onRendered: (() -> Void)?
     var onOpenMarkdown: ((URL, String?) -> Void)?
 
-    init(location: DocumentLocation) throws {
+    init(location: DocumentLocation, followChanges: Bool = false) throws {
         self.location = location
         guard let resources = Bundle.main.resourceURL else { throw ViewerError.invalidDocument }
         host = try RenderHost(resourceDirectory: resources.appendingPathComponent("Web"))
@@ -71,6 +71,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate {
         }
         host.onFailure = { [weak self] error in self?.status.stringValue = "Preview unavailable — \(error.localizedDescription)" }
         host.onRecovery = { [weak self] in self?.refresh.reload() }
+        host.setFollowChanges(followChanges)
         host.load()
         do { try refresh.start() } catch { status.stringValue = error.localizedDescription; refresh.reload() }
     }
@@ -78,6 +79,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate {
     required init?(coder: NSCoder) { fatalError("Programmatic windows only") }
 
     func reload() { if !host.isReady { host.load() }; refresh.reload() }
+    func setFollowChanges(_ enabled: Bool) { host.setFollowChanges(enabled) }
 
     func navigate(fragment: String) {
         if rendered { host.scrollToFragment(fragment) } else { pendingFragment = fragment }
