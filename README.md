@@ -19,7 +19,7 @@ standard `codesign`/`plutil` tools. You need Node 22+ only to regenerate rendere
 assets.
 
 ```sh
-git clone <repo-url> mdviewer && cd mdviewer
+git clone https://github.com/guneriu/mdviewer.git && cd mdviewer
 CONFIGURATION=release bash scripts/package.sh   # → .build/release-package/MDViewer.app
 bash scripts/test-swift.sh                      # optional: native unit tests
 bash scripts/install.sh --dry-run               # shows what would be installed

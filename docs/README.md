@@ -134,5 +134,5 @@ GHSA-gfr2-rv44-r23c. A zero-entry registry snapshot is not a vulnerability-free 
 Project terms are [MIT](../LICENSE); bundled dependency terms remain in
 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) and
 [Resources/Notices/](../Resources/Notices/). Git setup, hosting, CI and public
-release/notarization are separate owner decisions; this documentation invents no
-repository URL or passing CI status.
+release/notarization are separate owner decisions. The repository is hosted at
+<https://github.com/guneriu/mdviewer>; there is no CI, and no passing-CI claim is made.
