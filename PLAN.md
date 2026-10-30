@@ -1,0 +1,194 @@
+# MDViewer — Implementation Plan
+
+Status: original v1 implementation plan (2026-10-29), retained as the contract and milestone history. Implementation exists; see [TEST_RESULTS.md](TEST_RESULTS.md) for dated evidence, unresolved blockers and uncompleted acceptance. This is not a current completion claim.
+Project: standalone `mdviewer/` source tree.
+Contract: [Product and technical specification](SPEC.md).
+The original implementation authorization was separate from this plan. This document does not authorize commits, pushes, changes to pi-files, system default changes, installation, or execution of unfinished work.
+
+## 1. Intended result
+
+An independently packaged MDViewer.app that the user selects once as the default Markdown viewer.
+After that, the existing external-open action in pi-files opens a local rendered document directly.
+The app also works from Finder and macOS open, with no running Pi process and no browser service.
+
+The earlier CLI-to-browser idea is superseded for v1 by this standalone native-app flow.
+A shell wrapper can be added later; it is not required for the one-click integration.
+
+## 2. Implementation approach and stop conditions
+
+Work in small ordered milestones. Keep one writer per worktree and do not modify the Pi extension.
+Default to Swift/AppKit + WKWebView, with trusted, bundled JavaScript rendering.
+Use local builds, tests, and security fixtures before calling the app ready.
+
+Stop and report rather than silently:
+- installing full Xcode or new system-wide tools;
+- replacing the chosen architecture with Electron/Tauri;
+- relaxing the asset/network security boundary;
+- turning on a local HTTP server;
+- using a paid service, public CDN, or online Markdown API;
+- enabling Mermaid/raw HTML to make a fixture appear to pass;
+- changing default app associations, committing, or pushing.
+
+The user may explicitly approve installation/default association during end-to-end testing.
+Test automation must not change all Markdown associations automatically.
+
+## 3. Milestones
+
+### M0 — Prove build, open-event, and rendering feasibility
+
+Dependencies: user approves starting implementation.
+Actions:
+1. Check Swift/macOS SDK/toolchain versions and document whether Command Line Tools alone are sufficient.
+2. Choose a stable app bundle identifier and create the minimal package, URL-based application(_:open:) handler, normal menu, one window, bundle metadata, and .app packaging script.
+3. Exercise open -a MDViewer /absolute/path/to/fixture.md without changing the system default.
+4. Verify cold launch, warm launch, multiple-file requests, and paths with spaces/Unicode.
+5. Prototype WKURLSchemeHandler with one bundled shell/script and one permitted local raster image.
+6. Apply CSP and prove that remote images, script URLs, and out-of-root paths cannot fetch or execute.
+7. Verify the document-type declarations for .md and .markdown.
+8. Check actual framework/API availability against the proposed macOS 13 baseline.
+9. Run a minimal XCTest or Swift Testing check and a real WKWebView integration test with the selected toolchain; do not assume full-Xcode-only runners are available.
+10. Verify the packaged bundle is not App-Sandbox-enabled and test parent-directory watching/adjacent assets under its actual entitlements.
+
+Exit gate: a locally built app receives files correctly, renders a safe local fixture, and passes the security/build smoke checks; the intended sandbox/entitlement decision is verified, and both a test-framework smoke check and a real WebKit integration test can run.
+If the toolchain or resource-loading approach fails, report the exact blocker and options before expanding implementation.
+Do not present ad-hoc signing as notarization or disable Gatekeeper to pass the gate.
+
+### M1 — Establish the project and reproducible renderer assets
+
+Dependencies: M0 passes.
+Actions:
+1. Adopt the independent project layout below; initialize Git only if separately requested.
+2. Add the build/package scripts, test entry points, dependency manifest, and ignore rules.
+3. Select and pin markdown-it, DOMPurify, highlight.js, and a task-list plugin after checking licenses/security advisories.
+4. Include CommonMark plus explicit tables/strikethrough/task-list behavior, with raw HTML disabled.
+5. Build a minimal highlighting bundle with a documented language list and unknown-language fallback.
+6. Vendor runtime assets and all notices. Record source URLs, versions, checksums, and regeneration instructions.
+7. Ensure a clean local build uses committed assets and does not require network downloads at app runtime.
+
+Exit gate: reproducible asset generation plus passing renderer fixtures and license inventory.
+No runtime npm install or CDN dependency.
+
+### M2 — Implement the document viewer
+
+Dependencies: M1 passes.
+Actions:
+1. Implement URL normalization, canonical duplicate detection, and one session/window per distinct file.
+2. Read UTF-8/BOM files safely, honor the 10 MiB cap, and report input errors without writing source.
+3. Transfer Markdown as a WebKit argument, sanitize rendering, and enforce native URL policy.
+4. Implement heading anchors, relative local images, safe link routing, and blocked-resource placeholders.
+5. Add system light/dark styling, scrolling for wide content, text selection/copy, find, and zoom/reset.
+6. Add Cmd-O, Cmd-R, Cmd-W, Cmd-Q, file-path display, and accessible status/error UI.
+7. Handle empty documents and unsupported syntax/languages gracefully.
+
+Exit gate: SPEC A02-A05, A08, A10, and A12 pass on representative fixtures. Perform initial keyboard/find/zoom checks now; full A11, including VoiceOver, is completed in M4.
+
+### M3 — Implement reliable live refresh
+
+Dependencies: M2 passes.
+Actions:
+1. Observe the canonical target's parent directory as well as file state so atomic replacement does not strand a file-descriptor watcher. Reopening resolves a retargeted symlink; asset-only changes need Cmd-R in v1.
+2. Add a roughly 200 ms debounce, bounded transient-read retries, and render-generation checks.
+3. Cover direct writes, truncate/rewrite, atomic rename, delete/recreate, and rapid consecutive saves.
+4. Keep the last good preview on failures and clear the warning after recovery.
+5. Restore the scroll position where practical and stop watchers on window close.
+
+Exit gate: SPEC A06-A07 pass; an ordinary update appears within 1 second of the last settled write on the target machine.
+Record known limitations such as a transient partially written but valid UTF-8 file; debounce cannot infer an external writer's intent.
+
+### M4 — Harden and validate untrusted input
+
+Dependencies: M2 and M3 pass.
+Actions:
+1. Add adversarial fixtures for raw HTML, event attributes, script-like links, frames, encoded traversal, symlink escapes, malformed URLs, remote images, unsafe data URLs, and oversized input.
+2. Verify that only allowed bundled resources and in-root raster images are read.
+3. Confirm unsolicited navigation, popups, downloads, and automatic network requests are blocked.
+4. Test with networking disconnected and separately observe network activity with networking available; offline success alone does not prove that no fetch was attempted.
+5. Verify source hashes before/after use and absence of persisted document content in logs/web storage.
+6. Audit only the latest render wins under intentionally reordered asynchronous reads/renders.
+7. Run keyboard, VoiceOver, dark-mode, find/copy/zoom, and multi-window smoke checks.
+
+Exit gate: SPEC A09 plus security regressions pass. Record the network-observation method and limitations.
+A local deny-all CSP and navigation delegate are not substitutes for subresource/path tests.
+
+### M5 — Package, integrate, and document local installation
+
+Dependencies: M4 passes.
+Actions:
+1. Produce a host-architecture release .app, bundle assets/notices, retain the app ID chosen in M0, and ad-hoc sign as appropriate.
+2. Test the packaged bundle, not only a development executable.
+3. With user approval, install to ~/Applications using a predictable path and no broad system changes.
+4. Let the user select MDViewer through Finder → Get Info → Open with → Change All.
+5. Test the real pi-files external-open action against that association and record the precise action used.
+6. Repeat cold/warm opens, multiple documents, an app replacement/update, and a source edit from Sublime.
+7. Document build, installation, association, restoring Sublime as default, uninstall, security limits, and known unsupported syntax.
+8. Measure startup/render timing on representative files and record the target hardware/OS.
+
+Exit gate: SPEC A01 and A13-A14 pass; every remaining acceptance row has a recorded result.
+Do not call the project complete with unresolved security failures or an untested pi-files integration.
+
+## 4. Proposed repository layout
+
+    mdviewer/
+      SPEC.md
+      PLAN.md
+      README.md
+      Package.swift
+      Sources/MDViewer/           App lifecycle, sessions, windows, renderer host
+      Resources/                 Renderer shell, styles, vendored JS, notices
+      Packaging/                 Info.plist template and app metadata
+      scripts/                   Build, package, asset verification, local install
+      Tests/                     Swift tests and renderer/security harnesses
+      Fixtures/                  Markdown, images, hostile-input samples
+      THIRD_PARTY_NOTICES.md
+      vendor-manifest.json
+
+The implementation can refine filenames, but resource packaging, tests, fixtures, and third-party notices must remain explicit.
+Keep generated build output out of source control. No pi-files source dependency.
+
+## 5. Verification strategy
+
+### Automated
+
+- Swift tests: canonical identity, path containment, URL validation, encoding/size handling, link policy, and reload state machine.
+- Renderer tests: all supported Markdown constructs, escaping/sanitization, task lists, heading IDs, unknown language fallback, and bundled asset completeness.
+- WebKit integration tests: real scheme loading, CSP, forbidden subresources, link interception, and source transfer containing quotes/script delimiters.
+- Watcher integration tests: atomic replacement, rapid writes, deletion/recreation, cleanup, and stale-render rejection.
+- Packaging smoke: valid .app layout/Info.plist/resources, successful local signing verification, Finder/open event delivery.
+- Dependency audit: exact pins/checksums/licenses and no remote runtime asset URLs.
+
+Prefer injected clocks/readers for deterministic reload tests and bounded filesystem integration waits for actual watcher behavior.
+A browser/JavaScript-only renderer harness cannot prove WebKit-specific security behavior; run both.
+
+### Manual on the target Mac
+
+- Finder default-app setup and rollback; direct pi-files open.
+- Cold/warm launch, multiple windows, duplicate focus, and source edits in Sublime.
+- Light/dark mode, find, zoom, copy, keyboard operation, and VoiceOver smoke.
+- Offline rendering and separately instrumented no-background-network check.
+- Install/update/uninstall without changing or deleting source files.
+
+### Planning validation already performed
+
+- Confirmed pi-files' macOS open command in the external pi-files source, `packages/pi-files/src/core.ts:237-244`. That path is not a dependency in this project.
+- The original planning pass preceded project implementation; these observations describe that pass only.
+- Observed macOS 26.7.1 and /Library/Developer/CommandLineTools as the selected developer directory.
+- Reviewed official/documented platform and renderer references linked from SPEC.md.
+- At the original planning stage, no Swift build, app installation, dependency selection, runtime security tests, or default-association changes had been performed. Subsequent implementation evidence is recorded separately in TEST_RESULTS.md.
+
+## 6. Completion and review gate
+
+Track acceptance rows A01-A14 in a small test-results document during implementation.
+For each, record command/action, fixture, expected result, observed result, OS/build, and any limitation.
+Run tests/build checks before independent diff/security review, supplying the reviewer with the on-disk files and actual results.
+Fix blocking findings and rerun affected tests before declaring v1 ready.
+
+Deliverables for v1:
+- Source, bundled dependency manifest/licenses, reproducible build instructions, and installable local MDViewer.app.
+- Passing automated checks and recorded manual/integration results.
+- README with the one-time setup and the normal click-to-view workflow.
+- Explicit limitations: no raw HTML, no Mermaid rendering, no remote images, constrained local asset root, local architecture/OS validation, and no notarized public release.
+
+## 7. Historical planning-only scope
+
+The original planning pass performed no application implementation, Git initialization, commits, pushes, dependency installation, Pi extension edits, default-association changes, or app installation. Implementation was subsequently authorized separately; this record does not grant new execution permission.
+See [TEST_RESULTS.md](TEST_RESULTS.md) for implementation history and the [separate watcher blocker plan](docs/plans/2026-10-29-tmp-parent-watcher-blocker.md) for outstanding proposed work.

@@ -1,0 +1,26 @@
+:root { color-scheme: light dark; font: 16px/1.6 -apple-system, BlinkMacSystemFont, sans-serif; --border: #c9cdd2; --muted: #59636f; --panel: #f3f5f7; --link: #075bb9; }
+@media (prefers-color-scheme: dark) { :root { --border: #49515b; --muted: #b0b9c3; --panel: #222830; --link: #8bc4ff; } }
+body { margin: 0; background: Canvas; color: CanvasText; overflow-wrap: anywhere; }
+main { max-width: 960px; padding: 28px 36px 64px; margin: auto; }
+h1,h2,h3,h4,h5,h6 { line-height: 1.25; scroll-margin-top: 20px; }
+h1,h2 { padding-bottom: .3em; border-bottom: 1px solid var(--border); }
+a { color: var(--link); text-decoration: underline; }
+a:focus-visible { outline: 2px solid var(--link); outline-offset: 3px; }
+pre,code { font-family: ui-monospace, Menlo, monospace; font-size: .9em; }
+pre { padding: 16px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; overflow-x: auto; white-space: pre; overflow-wrap: normal; }
+:not(pre)>code { background: var(--panel); padding: .15em .3em; border-radius: 3px; }
+table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+th,td { border: 1px solid var(--border); padding: 6px 12px; min-width: 90px; }
+th { background: var(--panel); }
+blockquote { color: var(--muted); border-left: 4px solid var(--border); margin-left: 0; padding-left: 20px; }
+hr { border: 0; border-top: 1px solid var(--border); }
+img { max-width: 100%; height: auto; }
+.task-list-item { list-style-type: none; }
+.task-list-item-checkbox { margin-right: .5em; }
+.blocked-image,.blocked-link,.empty-document { color: var(--muted); }
+.blocked-image { display: inline-block; border: 1px dashed var(--border); padding: 4px 8px; }
+.hljs-keyword,.hljs-selector-tag,.hljs-literal { color: #8250df; }
+.hljs-string,.hljs-attr { color: #116329; }
+.hljs-number,.hljs-title,.hljs-built_in { color: #0550ae; }
+.hljs-comment { color: var(--muted); font-style: italic; }
+@media (prefers-color-scheme: dark) { .hljs-keyword,.hljs-selector-tag,.hljs-literal { color: #d2a8ff; } .hljs-string,.hljs-attr { color: #a5d6ff; } .hljs-number,.hljs-title,.hljs-built_in { color: #79c0ff; } }

@@ -1,0 +1,17 @@
+# Native build products, SwiftPM state, and local verification evidence
+.build/
+.swiftpm/
+
+# Renderer-development dependencies; vendored Resources and lockfiles stay visible
+node_modules/
+
+# Python bytecode and local test/tool caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# macOS Finder metadata
+.DS_Store
+
+# IDE metadata
+.idea/

@@ -1,0 +1,19 @@
+{
+  "name": "mdviewer-renderer",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "node scripts/build-renderer.mjs",
+    "test": "node scripts/test-renderer-assets.mjs && node scripts/test-reference-performance.mjs"
+  },
+  "dependencies": {
+    "markdown-it": "15.0.3",
+    "dompurify": "3.4.17",
+    "highlight.js": "11.12.0",
+    "@mdit/plugin-tasklist": "1.1.4"
+  },
+  "devDependencies": { "esbuild": "0.28.2" },
+  "overrides": { "@mdit/helper": "1.1.3" }
+}
