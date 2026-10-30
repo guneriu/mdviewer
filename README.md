@@ -78,7 +78,8 @@ provide tabs or session restore, or aim for exact GitHub rendering parity.
   **macOS 13**, not a runtime-tested compatibility guarantee. The test framework
   requires **macOS 14**. Other toolchains, OS versions, and architectures need
   their own validation.
-- Node **>=22** and npm are needed only to regenerate renderer assets. Normal
+- Node **22.23.4+, 24.22.1+ or 26.12.1+** (patched for CVE-2026-111497; Node 23,
+  25 and older lines are end-of-life) and npm are needed only to regenerate renderer assets. Normal
   app packaging uses the existing vendored assets, not npm or network downloads.
 
 ## Build and verify — no launch or installation

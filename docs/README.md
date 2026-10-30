@@ -87,7 +87,8 @@ Preserve those distinctions when reporting results.
 ## Renderer pins and regeneration
 
 Normal packaging consumes vendored assets. Only deliberate renderer development
-needs an existing Node **>=22** and local npm. These commands install local
+needs an existing Node **22.23.4+, 24.22.1+ or 26.12.1+** (the `engines` range in
+`package.json`; earlier releases are vulnerable to CVE-2026-111497) and local npm. These commands install local
 packages, regenerate assets and run JavaScript tests; the optional audit contacts
 the registry. They are not read-only inspection or runtime requirements.
 
