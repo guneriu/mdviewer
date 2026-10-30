@@ -5,6 +5,30 @@ import Testing
 @testable import MDViewerCore
 
 struct AssetPolicyTests {
+    @Test func hardLinkRefreshPathsKeepEachResolvedReferenceSpelling() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try fm.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+        let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+afo8AAAAASUVORK5CYII=")!
+        try png.write(to: root.appendingPathComponent("a.png"))
+        try fm.linkItem(at: root.appendingPathComponent("a.png"), to: root.appendingPathComponent("hard.png"))
+        let pointer = try #require(realpath(root.path, nil)); defer { free(pointer) }
+        let physical = URL(fileURLWithPath: String(cString: pointer))
+        for name in ["a.png", "hard.png", "a.png", "hard.png"] {
+            // Rewriting either name can change which same-inode alias F_GETPATH reports.
+            try Data().write(to: root.appendingPathComponent(name))
+            try png.write(to: root.appendingPathComponent(name))
+            let batch = AssetPolicy.images(references: [name], root: root)
+            #expect(batch.resources.count == 1)
+            #expect(batch.resolvedPaths == [physical.appendingPathComponent(name).path])
+        }
+        let combined = AssetPolicy.images(references: ["a.png", "hard.png"], root: root)
+        #expect(combined.resources.count == 1 && combined.references.count == 2)
+        #expect(combined.resolvedPaths == [physical.appendingPathComponent("a.png").path,
+                                          physical.appendingPathComponent("hard.png").path])
+    }
+
     @Test func inRootTraversalRendersButEscapesAreNotRefreshCandidates() throws {
         let fm = FileManager.default
         let fixture = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)

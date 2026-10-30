@@ -73,6 +73,10 @@ filesystem I/O is performed in the event callback.
   no-follow descriptor/type/containment checks before being recorded; failures
   that cannot establish this safety are not candidates. Watching a rejected image
   grants **no access**, resource or capability: all rendering checks still apply.
+  Record the policy-resolved reference spelling after the descriptor checks, not
+  the `F_GETPATH` spelling, which may select a different hard-link alias. Distinct
+  referenced hard-link paths remain separate bounded triggers; bytes/capabilities
+  are still deduplicated by inode.
 - `AssetPolicy`/`ImageBatch` currently drops file URLs after identity checks. Extend
   it to return `resolvedPaths: Set<String>` alongside the existing results, computed
   from the same validated resolution. No second resolution path is added.

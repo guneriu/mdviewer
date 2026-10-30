@@ -121,7 +121,8 @@ public enum AssetPolicy {
             throw ViewerError.forbiddenAsset
         }
         if batch.existingPaths.count < limits.uniqueImages {
-            batch.existingPaths.insert(String(cString: actualPath))
+            // F_GETPATH can select a different hard-link alias; watch the resolved reference.
+            batch.existingPaths.insert(target.path)
         }
         let mime: String
         let expectedType: String
