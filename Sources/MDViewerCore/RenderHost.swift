@@ -9,6 +9,7 @@ public final class RenderHost: NSObject, WKNavigationDelegate, WKUIDelegate {
     public var onFailure: ((Error) -> Void)?
     public var onLink: ((LinkTarget) -> Void)?
     public var onRecovery: (() -> Void)?
+    public var onAssetPaths: ((Set<String>, Int) -> Void)?
     public private(set) var blockedNavigations = 0
     public private(set) var contentProcessRecoveries = 0
     public private(set) var generation = 0
@@ -153,6 +154,7 @@ public final class RenderHost: NSObject, WKNavigationDelegate, WKUIDelegate {
                 }
                 self.rebuildLinks()
                 try self.requireCurrent(version)
+                self.onAssetPaths?(batch.resolvedPaths, version)
                 completion(.success(version))
             } catch {
                 if !committed || epoch != self.shellEpoch {
@@ -185,7 +187,7 @@ public final class RenderHost: NSObject, WKNavigationDelegate, WKUIDelegate {
         applyingFollowChangesEpoch = nil
         invalidate(); webView.stopLoading(); gateway.retireImages()
         linkTargets.removeAll(); committedLinks.removeAll(); linkStages.removeAll()
-        onReady = nil; onFailure = nil; onLink = nil; onRecovery = nil
+        onReady = nil; onFailure = nil; onLink = nil; onRecovery = nil; onAssetPaths = nil
     }
 
     public func scrollToFragment(_ fragment: String) {

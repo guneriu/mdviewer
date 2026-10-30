@@ -71,6 +71,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate {
         }
         host.onFailure = { [weak self] error in self?.status.stringValue = "Preview unavailable — \(error.localizedDescription)" }
         host.onRecovery = { [weak self] in self?.refresh.reload() }
+        host.onAssetPaths = { [weak self] paths, generation in self?.refresh.updateAssetPaths(paths, generation: generation) }
         host.setFollowChanges(followChanges)
         host.load()
         do { try refresh.start() } catch { status.stringValue = error.localizedDescription; refresh.reload() }

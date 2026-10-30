@@ -16,7 +16,8 @@ extension M0Integration {
                 host.render(source: source, root: root, document: file, generation: generation) { continuation.resume(with: $0) }
             }
         }
-        defer { refresh.close() }
+        host.onAssetPaths = { [weak refresh] paths, generation in refresh?.updateAssetPaths(paths, generation: generation) }
+        defer { refresh.close(); host.onAssetPaths = nil }
         var warning = ""
         refresh.onState = { state in if case .warning(let message) = state { warning = message }; if state == .displayed { warning = "" } }
         try refresh.start()
@@ -68,10 +69,47 @@ extension M0Integration {
         }
         let queuedDOM = try await js(queued, "return document.querySelector('h1')?.textContent === 'Queued'") as? Bool
         try check(queuedDOM == true, "reload before shell readiness is queued and rendered")
+        try await testCommittedAssetPaths(resources: resources, root: root)
         try await testRenderTransactions(host, root: root)
         try await testFollowPreferenceLifecycle(resources: resources, root: root)
         try await testFollowPreferenceRace(resources: resources, root: root, recoverWhileHeld: false)
         try await testFollowPreferenceRace(resources: resources, root: root, recoverWhileHeld: true)
+    }
+
+    static func testCommittedAssetPaths(resources: URL, root: URL) async throws {
+        let host = try RenderHost(resourceDirectory: resources.appendingPathComponent("Web"))
+        defer { host.close() }
+        var reports: [(Set<String>, Int)] = []
+        host.onAssetPaths = { reports.append(($0, $1)) }
+        host.load()
+        try await waitUntil("asset report host ready") { host.isReady }
+        try await render(host, source: "![a](pixel.png) ![missing](img/new.png)", root: root)
+        let expected = AssetPolicy.images(references: ["pixel.png", "img/new.png"], root: root).resolvedPaths
+        try check(reports.count == 1 && reports[0].0 == expected && reports[0].1 == host.generation,
+                  "only successful current commit reports accepted and missing image candidates")
+        for method in ["prepareMarkdown", "stageMarkdown", "commitMarkdown"] {
+            _ = try await js(host, "window.savedMethod = window[method]; window[method] = (...args) => new Promise(resolve => window.releaseMethod = () => resolve(window.savedMethod(...args))); return true", arguments: ["method": method])
+            let pending = Task { try await render(host, source: "![missing](other.png)", root: root) }
+            try await waitUntil("held \(method) asset report") { try await js(host, "return typeof window.releaseMethod === 'function'") as? Bool == true }
+            _ = host.invalidate()
+            _ = try await js(host, "window[method] = window.savedMethod; window.releaseMethod(); delete window.releaseMethod; return true", arguments: ["method": method])
+            _ = await pending.result
+            try check(reports.count == 1, "stale \(method) cannot publish image watch paths")
+        }
+        _ = try await js(host, "window.savedStage = window.stageMarkdown; window.stageMarkdown = () => { throw new Error('injected report failure') }; return true")
+        var failed = false
+        do { try await render(host, source: "![missing](failure.png)", root: root) } catch { failed = true }
+        try check(failed && reports.count == 1 && reports[0].0 == expected, "stage failure preserves last successful image path report")
+        _ = try await js(host, "window.stageMarkdown = window.savedStage; return true")
+        try await render(host, source: "", root: root)
+        try check(reports.count == 2 && reports[1].0.isEmpty, "empty successful commit clears image watch paths")
+        _ = try await js(host, "window.prepareMarkdown = () => new Promise(resolve => window.releaseClosed = () => resolve({images: [], links: []})); return true")
+        let closing = Task { try await render(host, source: "closing", root: root) }
+        try await waitUntil("prepare before close") { try await js(host, "return typeof window.releaseClosed === 'function'") as? Bool == true }
+        host.close()
+        _ = try await js(host, "window.releaseClosed(); return true")
+        _ = await closing.result
+        try check(reports.count == 2 && host.onAssetPaths == nil, "close clears callback and prevents late path publication")
     }
 
     static func testFollowPreferenceLifecycle(resources: URL, root: URL) async throws {
