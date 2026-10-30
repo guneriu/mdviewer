@@ -30,6 +30,9 @@ public struct ImageBatch: Sendable {
     public fileprivate(set) var resources: [FileIdentity: GatewayResource] = [:]
     public fileprivate(set) var readCount = 0
     public fileprivate(set) var bytesRead = 0
+    public fileprivate(set) var resolvedPaths: Set<String> = []
+    fileprivate var existingPaths: Set<String> = []
+    fileprivate var missingPaths: Set<String> = []
     fileprivate var pixels = 0
 }
 
@@ -47,6 +50,7 @@ public enum AssetPolicy {
             guard batch.references[reference] == nil else { continue }
             try? load(reference: reference, root: root, limits: limits, batch: &batch)
         }
+        batch.resolvedPaths = batch.existingPaths.union(batch.missingPaths)
         return batch
     }
 
@@ -56,26 +60,57 @@ public enum AssetPolicy {
         return batch.resources[batch.references[reference]!]!
     }
 
-    private static func load(reference: String, root: URL, limits: ImageLimits, batch: inout ImageBatch) throws {
+    /// Resolve existing ancestors once in policy, never from watcher event paths.
+    private static func candidate(reference: String, root: URL) throws -> (url: URL, missing: Bool) {
         guard let parts = URLComponents(string: reference), parts.scheme == nil,
               parts.host == nil, parts.query == nil, parts.fragment == nil,
               let path = parts.percentEncodedPath.removingPercentEncoding,
               !path.isEmpty, !path.hasPrefix("/"), !path.contains("\\"), !path.contains("\0") else {
             throw ViewerError.forbiddenAsset
         }
-        let target = root.appendingPathComponent(path).standardizedFileURL.resolvingSymlinksInPath()
-        guard contains(target, root: root) else { throw ViewerError.forbiddenAsset }
-        let mime: String
-        let expectedType: String
-        switch target.pathExtension.lowercased() {
-        case "png": (mime, expectedType) = ("image/png", "public.png")
-        case "jpg", "jpeg": (mime, expectedType) = ("image/jpeg", "public.jpeg")
-        case "gif": (mime, expectedType) = ("image/gif", "com.compuserve.gif")
-        case "webp": (mime, expectedType) = ("image/webp", "org.webmproject.webp")
-        default: throw ViewerError.forbiddenAsset
+        guard !path.split(separator: "/").contains(".."), let rootPointer = realpath(root.path, nil) else {
+            throw ViewerError.forbiddenAsset
         }
+        defer { free(rootPointer) }
+        let physicalRoot = URL(fileURLWithPath: String(cString: rootPointer), isDirectory: true)
+        var ancestor = physicalRoot.appendingPathComponent(path).standardizedFileURL
+        var suffix: [String] = []
+        while true {
+            if let pointer = realpath(ancestor.path, nil) {
+                defer { free(pointer) }
+                var target = URL(fileURLWithPath: String(cString: pointer))
+                if !suffix.isEmpty {
+                    var info = stat()
+                    guard lstat(target.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else {
+                        throw ViewerError.forbiddenAsset
+                    }
+                }
+                for component in suffix.reversed() { target.appendPathComponent(component) }
+                let parent = physicalRoot.pathComponents, child = target.pathComponents
+                guard child.count > parent.count, child.starts(with: parent) else { throw ViewerError.forbiddenAsset }
+                return (target, !suffix.isEmpty)
+            }
+            guard errno == ENOENT else { throw ViewerError.forbiddenAsset }
+            // A dangling final/ancestor symlink is not a missing path candidate.
+            var info = stat()
+            guard lstat(ancestor.path, &info) != 0, errno == ENOENT,
+                  ancestor.pathComponents.count > physicalRoot.pathComponents.count else { throw ViewerError.forbiddenAsset }
+            suffix.append(ancestor.lastPathComponent)
+            ancestor.deleteLastPathComponent()
+        }
+    }
+
+    private static func load(reference: String, root: URL, limits: ImageLimits, batch: inout ImageBatch) throws {
+        let resolved = try candidate(reference: reference, root: root)
+        let target = resolved.url
         let fd = Darwin.open(target.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
-        guard fd >= 0 else { throw ViewerError.forbiddenAsset }
+        if fd < 0 {
+            let missing = errno == ENOENT
+            if missing, resolved.missing, batch.missingPaths.count < limits.uniqueImages {
+                batch.missingPaths.insert(target.path)
+            }
+            throw ViewerError.forbiddenAsset
+        }
         let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
         defer { try? handle.close() }
         var info = stat()
@@ -84,6 +119,18 @@ public enum AssetPolicy {
               fcntl(fd, F_GETPATH, &actualPath) == 0,
               contains(URL(fileURLWithPath: String(cString: actualPath)), root: root) else {
             throw ViewerError.forbiddenAsset
+        }
+        if batch.existingPaths.count < limits.uniqueImages {
+            batch.existingPaths.insert(String(cString: actualPath))
+        }
+        let mime: String
+        let expectedType: String
+        switch target.pathExtension.lowercased() {
+        case "png": (mime, expectedType) = ("image/png", "public.png")
+        case "jpg", "jpeg": (mime, expectedType) = ("image/jpeg", "public.jpeg")
+        case "gif": (mime, expectedType) = ("image/gif", "com.compuserve.gif")
+        case "webp": (mime, expectedType) = ("image/webp", "org.webmproject.webp")
+        default: throw ViewerError.forbiddenAsset
         }
         let identity = FileIdentity(device: info.st_dev, inode: info.st_ino)
         if batch.resources[identity] != nil { batch.references[reference] = identity; return }

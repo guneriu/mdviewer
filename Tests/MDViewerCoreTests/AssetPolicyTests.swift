@@ -1,9 +1,52 @@
+import Darwin
 import Foundation
 import ImageIO
 import Testing
 @testable import MDViewerCore
 
 struct AssetPolicyTests {
+    @Test func physicalRefreshCandidatesIncludeRejectedAndMissingButNotUnsafePaths() throws {
+        let root = URL(fileURLWithPath: "/tmp").appendingPathComponent("MDViewer-assets-\(UUID().uuidString)")
+        let fm = FileManager.default
+        try fm.createDirectory(at: root.appendingPathComponent("img"), withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+        let pointer = try #require(realpath(root.path, nil))
+        defer { free(pointer) }
+        let physical = URL(fileURLWithPath: String(cString: pointer))
+        let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+afo8AAAAASUVORK5CYII=")!
+        try png.write(to: root.appendingPathComponent("a.png"))
+        try png.write(to: root.appendingPathComponent("café.png"))
+        try fm.linkItem(at: root.appendingPathComponent("a.png"), to: root.appendingPathComponent("hard.png"))
+        try fm.createSymbolicLink(at: root.appendingPathComponent("alias.png"), withDestinationURL: root.appendingPathComponent("a.png"))
+        try fm.createSymbolicLink(at: root.appendingPathComponent("escape"), withDestinationURL: root.deletingLastPathComponent())
+        try fm.createSymbolicLink(at: root.appendingPathComponent("dangling.png"), withDestinationURL: root.appendingPathComponent("absent.png"))
+        #expect(mkfifo(root.appendingPathComponent("fifo.png").path, 0o600) == 0)
+        for (name, data) in [("zero.png", Data()), ("invalid.png", Data("partial".utf8)), ("unsupported.svg", png), ("large.png", png)] {
+            try data.write(to: root.appendingPathComponent(name))
+        }
+        let handle = try FileHandle(forWritingTo: root.appendingPathComponent("large.png"))
+        try handle.truncate(atOffset: 26 * 1024 * 1024); try handle.close()
+        let candidates = ["a.png", "hard.png", "cafe\u{301}.png", "zero.png", "invalid.png", "unsupported.svg", "large.png", "img/missing.png", "future/a.png"]
+        let unsafe = ["../outside.png", "%2e%2e/outside.png", "https://example.invalid/a.png", "file:///tmp/a.png", "escape/a.png", "fifo.png", "dangling.png", "a.png?x=1", "a.png#x", "a%00.png"]
+        let batch = AssetPolicy.images(references: candidates + unsafe + ["alias.png"], root: root)
+        #expect(batch.resolvedPaths == Set(candidates.map { physical.appendingPathComponent($0).path }))
+        #expect(batch.resources.count == 2)
+        #expect(batch.references.count == 4)
+        for name in ["zero.png", "invalid.png", "unsupported.svg", "large.png"] { #expect(batch.references[name] == nil) }
+        // A placeholder commit must not retire the trigger for a later valid rewrite.
+        try Data().write(to: root.appendingPathComponent("a.png"))
+        let rejected = AssetPolicy.images(references: ["a.png"], root: root)
+        #expect(rejected.resources.isEmpty && rejected.resolvedPaths == [physical.appendingPathComponent("a.png").path])
+        try png.write(to: root.appendingPathComponent("a.png"))
+        #expect(AssetPolicy.images(references: ["a.png"], root: root).resources.count == 1)
+        var limits = ImageLimits(); limits.uniqueImages = 1
+        let bounded = AssetPolicy.images(references: ["a.png", "café.png", "one.png", "two.png"], root: root, limits: limits)
+        #expect(bounded.resolvedPaths == [physical.appendingPathComponent("a.png").path, physical.appendingPathComponent("one.png").path])
+        limits = ImageLimits(); limits.totalBytes = 0
+        let overBudget = AssetPolicy.images(references: ["a.png"], root: root, limits: limits)
+        #expect(overBudget.resources.isEmpty && overBudget.resolvedPaths.count == 1 && overBudget.bytesRead == 0)
+    }
+
     @Test func containmentUsesComponentsAndResolvesSymlinks() throws {
         let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let root = temp.appendingPathComponent("root")
