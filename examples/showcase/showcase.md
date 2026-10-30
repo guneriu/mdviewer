@@ -228,9 +228,9 @@ These need you to interact with the app:
    keeps the paragraph you were reading in place, even when you add text above it.
 2. **Follow Changes** (View menu, ⇧⌘F). Turn it on, scroll to the top, then edit the
    end of this file and save. The preview scrolls to the change and highlights it briefly.
-3. **Image refresh.** Run `python3 scripts/make-showcase-images.py`, or replace any
-   file in `images/`. Press ⌘R to reload; once the image auto-refresh feature has
-   shipped, the preview updates by itself.
+3. **Image refresh.** Run `python3 scripts/make-showcase-images.py`, or replace,
+   delete or re-create any file in `images/`. The preview updates by itself;
+   ⌘R still forces a reload. Changes to files the document doesn't reference are ignored.
 4. **Find** (⌘F), **zoom** (⌘+ / ⌘− / ⌘0), and **dark mode** (switch macOS
    appearance; the page follows it).
 5. **Reload** (⌘R) re-reads the file and its images.
