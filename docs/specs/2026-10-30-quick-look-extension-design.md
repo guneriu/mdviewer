@@ -1,7 +1,7 @@
 # Quick Look preview extension — design
 
 Status: proposed (2026-10-30). Feature 7 of the post-v1 round. Implemented last
-(order 1 → 3 → 8 → 7). Contract base: [v1 specification](2026-10-29-mdviewer-v1-design.md).
+(order 1 → 3 → 7; feature 8, the mdv CLI, was dropped). Contract base: [v1 specification](2026-10-29-mdviewer-v1-design.md).
 
 ## Goal
 

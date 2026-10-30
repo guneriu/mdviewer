@@ -10,7 +10,7 @@
 
 **Spec:** [Content-anchored scroll and Follow Changes](../specs/2026-10-30-scroll-anchor-follow-changes-design.md).
 
-**Execution order:** Feature **1 → 3 → 8 → 7**: this plan, image auto-refresh, mdv CLI, Quick Look. `Sources/MDViewerCore/RenderHost.swift` is shared with image refresh and Quick Look: preserve its generation/capability transaction and re-read it before each subsequent plan.
+**Execution order:** Feature **1 → 3 → 7**: this plan, image auto-refresh, Quick Look (feature 8, the mdv CLI, was dropped on 2026-10-30). `Sources/MDViewerCore/RenderHost.swift` is shared with image refresh and Quick Look: preserve its generation/capability transaction and re-read it before each subsequent plan.
 
 **Authorization:** Planning is not execution approval. No commands in this document were run during planning. Implementation may use isolated probes, but must not launch/install/register the actual app, call `open`/`lsregister`, change document defaults, or set `MDVIEWER_M0_ALLOW_LAUNCH_SERVICES`. Commit steps below are future checkpoints, not permission to commit during this docs-only task. Use only locally available pinned dependencies; if `npm ci --ignore-scripts` cannot run offline, stop rather than fetch from the network.
 

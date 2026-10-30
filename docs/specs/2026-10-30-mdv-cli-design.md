@@ -1,6 +1,12 @@
 # `mdv` command-line launcher — design
 
-Status: proposed (2026-10-30). Feature 8 of the post-v1 round. The v1 specification
+Status: **dropped** (2026-10-30), not implemented. With MDViewer set as the default
+Markdown app, `open file.md` already opens it. To view in MDViewer while another app
+stays the default, use the shell alias in the README (`alias mdv='open -b de.local.mdviewer'`).
+The extra installer surface (packaged launcher, `--cli`/`--replace-cli`, `~/.local/bin`
+symlink handling) was not worth its risk. Kept as a record of the proposal.
+
+Original status: proposed (2026-10-30). Feature 8 of the post-v1 round. The v1 specification
 (`2026-10-29-mdviewer-v1-design.md:41-49`) deferred a CLI wrapper. This document is
 the follow-up decision. pi-files stays unchanged.
 

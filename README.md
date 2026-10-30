@@ -141,6 +141,27 @@ Optional installation and default-handler selection are separate user decisions:
    configuration dependency. Actual pi-files integration remains a manual
    acceptance check, not a verified feature claim about that external tool.
 
+### Opening from the terminal
+
+With MDViewer set as the default for `.md` (step 2 above), `open` routes to it:
+
+```sh
+open README.md            # one file
+open notes.md todo.md     # several files, one window each
+```
+
+To view in MDViewer while another app (an editor, for example) stays the default,
+target it by bundle identifier. Optionally add a shell alias, for example in `~/.zshrc`:
+
+```sh
+open -b de.local.mdviewer README.md
+alias mdv='open -b de.local.mdviewer'   # then: mdv README.md
+```
+
+`-b` picks the registered MDViewer copy by bundle identifier, so it doesn't depend on
+the install path. If several copies exist (a build plus the installed app), pass the
+bundle explicitly with `open -a ~/Applications/MDViewer.app README.md`.
+
 ### Update, restore defaults, and remove
 
 - **Update:** quit MDViewer, rebuild and verify the release, then explicitly run
