@@ -5,6 +5,9 @@ A local, offline, read-only Markdown viewer for macOS. MDViewer opens `.md` and
 system WebKit, and refreshes the preview when the source changes. It is not an
 editor, browser service, or Node runtime; no Pi process is needed to use it.
 
+Project page: <https://guneriu.github.io/mdviewer/> (source in [`site/`](site/),
+deployed by `.github/workflows/pages.yml` on pushes to `main`).
+
 **Status:** local build and automated verification evidence is available, but this
 is not a notarized or fully accepted release. Automatic refresh for documents
 directly inside `/tmp` (a symlink parent) was fixed on 2026-10-30. See

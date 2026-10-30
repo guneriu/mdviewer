@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="description" content="MDViewer: a fast, offline, read-only Markdown viewer for macOS with live refresh.">
+  <meta name="color-scheme" content="light dark">
+  <title>MDViewer — offline Markdown viewer for macOS</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <p class="eyebrow">macOS · Swift · open source</p>
+      <h1>MDViewer</h1>
+      <p class="tagline">A fast, offline, read-only Markdown viewer for macOS.<br>
+        Edit in any editor and the preview follows, without losing your place.</p>
+      <p class="actions">
+        <a class="button primary" href="https://github.com/guneriu/mdviewer">View on GitHub</a>
+        <a class="button" href="#install">Build &amp; install</a>
+      </p>
+      <p class="meta">Version 0.1.0 · macOS 13+ · MIT licensed</p>
+    </div>
+  </header>
+
+  <main>
+    <!-- Screenshots: add site/screenshots/light.png and dark.png, then uncomment.
+    <section class="wrap shot">
+      <picture>
+        <source srcset="screenshots/dark.png" media="(prefers-color-scheme: dark)">
+        <img src="screenshots/light.png" alt="MDViewer showing a Markdown document with a table, code and an image" width="1200">
+      </picture>
+    </section>
+    -->
+
+    <section class="wrap">
+      <h2>What it does</h2>
+      <div class="grid">
+        <article>
+          <h3>Live refresh</h3>
+          <p>Watches the file and its folder, so saves from any editor usually show up in well under a second.
+            That includes editors that save by replacing the file, and documents in <code>/tmp</code>.</p>
+        </article>
+        <article>
+          <h3>Keeps your place</h3>
+          <p>A refresh keeps the block you were reading in view, even when text above it changes.
+            Turn on <strong>Follow Changes</strong> (⇧⌘F) to jump to each edit and briefly highlight it.</p>
+        </article>
+        <article>
+          <h3>Images refresh too</h3>
+          <p>Overwrite, replace, delete or add a referenced PNG, JPEG, GIF or WebP and the preview updates
+            without touching the Markdown.</p>
+        </article>
+        <article>
+          <h3>Readable output</h3>
+          <p>Tables, task lists, strikethrough and code highlighting for JavaScript, TypeScript, JSON, CSS,
+            HTML/XML, Bash, Python and Swift. Follows light and dark mode.</p>
+        </article>
+        <article>
+          <h3>Native and quick</h3>
+          <p>Swift/AppKit with WebKit rendering. Find (⌘F), zoom (⌘+ / ⌘− / ⌘0), one window per file,
+            and links to other Markdown files open in MDViewer.</p>
+        </article>
+        <article>
+          <h3>Works with your tools</h3>
+          <p>Set it as the default app for <code>.md</code>, and <code>open notes.md</code>, Finder and other apps
+            route to it. Your editor stays your editor.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="wrap security">
+      <h2>Private by design</h2>
+      <ul>
+        <li><strong>No network.</strong> No server, CDN, analytics, updater or remote fonts. A content
+          security policy and WebKit content rules block remote loads, including remote images.</li>
+        <li><strong>Markdown is treated as untrusted.</strong> Raw HTML is shown as text, never run. Output is
+          sanitized with DOMPurify, and unsafe link schemes are blocked.</li>
+        <li><strong>Images stay inside the document's folder.</strong> Paths that escape it, symlink escapes,
+          SVG and <code>data:</code> URLs are rejected, and reads are size-bounded.</li>
+        <li><strong>Read-only.</strong> MDViewer never writes your files and doesn't execute code blocks.</li>
+      </ul>
+      <p class="note">The app isn't App Sandbox-enabled; containment is enforced by the app itself.
+        Details are in the <a href="https://github.com/guneriu/mdviewer#limitations-and-security">README</a>.</p>
+    </section>
+
+    <section class="wrap" id="install">
+      <h2>Build &amp; install</h2>
+      <p>MDViewer is distributed as source. You need macOS 13 or later, the Xcode Command Line Tools
+        (<code>xcode-select --install</code>; full Xcode isn't required) and Python 3.</p>
+<pre><code>git clone https://github.com/guneriu/mdviewer.git &amp;&amp; cd mdviewer
+CONFIGURATION=release bash scripts/package.sh   # build and sign locally
+bash scripts/install.sh --dry-run               # see what will happen
+bash scripts/install.sh --install               # copy to ~/Applications/MDViewer.app
+open -a ~/Applications/MDViewer.app README.md</code></pre>
+      <p>To make it the default viewer, select a <code>.md</code> file in Finder, choose
+        <strong>Get Info → Open with → MDViewer → Change All</strong>. Check the installed version under
+        <strong>MDViewer → About MDViewer</strong>. To update, quit the app and run
+        <code>bash scripts/install.sh --install --replace</code>.</p>
+      <p>To view in MDViewer while another app stays the default:</p>
+<pre><code>alias mdv='open -b de.local.mdviewer'   # then: mdv README.md</code></pre>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p>MDViewer is MIT licensed; bundled libraries keep their own licenses.
+        <a href="https://github.com/guneriu/mdviewer">Source on GitHub</a>.</p>
+      <p>Made with love using Pi by <a href="https://github.com/guneriu">@guneriu</a></p>
+    </div>
+  </footer>
+</body>
+</html>
