@@ -1,6 +1,8 @@
 # Quick Look preview extension — design
 
-Status: proposed (2026-10-30). Feature 7 of the post-v1 round. Implemented last
+Status: **parked** (2026-10-30). The feasibility spike did not get the extension discovered;
+see "Quick Look feasibility spike — parked" in [TEST_RESULTS.md](../../TEST_RESULTS.md).
+Original status: proposed (2026-10-30). Feature 7 of the post-v1 round. Implemented last
 (order 1 → 3 → 7; feature 8, the mdv CLI, was dropped). Contract base: [v1 specification](2026-10-29-mdviewer-v1-design.md).
 
 ## Goal

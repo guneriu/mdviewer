@@ -1,5 +1,9 @@
 # Quick Look Preview Extension Implementation Plan
 
+> **Status: parked (2026-10-30).** Task 1 Steps 1–6 ran; the hello extension was never
+> discovered, so the GO gate failed and Tasks 2–7 were not started. Evidence:
+> "Quick Look feasibility spike — parked" in [TEST_RESULTS.md](../../TEST_RESULTS.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Follow the operator's single-writer and review rules.
 
 **Goal:** After a successful, explicitly reviewed feasibility spike, provide an offline sanitized Markdown Quick Look preview using the existing renderer without an Xcode project or widened sandbox permissions.

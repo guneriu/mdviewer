@@ -1125,3 +1125,28 @@ this fix. Existing macOS 13 runtime and slow-volume/read-serialization limits
 remain; CLT search-path and Swift Testing macOS-deployment linker warnings
 persist. Independent acceptance review is still required; no all-M5 or universal
 acceptance claim is made.
+
+## Quick Look feasibility spike — parked (2026-10-30)
+
+Environment: macOS 26.7.1, Swift 6.4, arm64.
+
+- **Offline build passed.** The scratch "hello" appex built with SwiftPM (swiftbuild). Its
+  principal class resolved: plist value `MDViewerQuickLookCore.PreviewViewController`,
+  runtime name `PreviewViewController`. It was signed ad-hoc with only
+  `com.apple.security.app-sandbox`, and the container was signed without `--deep`.
+- **Discovery failed.** With user approval, `pluginkit -a <scratch appex>` exited 0, but the
+  extension never appeared in `pluginkit -mAvvv -p com.apple.quicklook.preview`. The listing
+  showed 15 plug-ins before and after, and the second run re-checked after 2, 4 and 6 s.
+- **Preview fell back to the system.** `qlmanage -p sample.md` showed the system plain-text
+  preview, not "hello" (the user watched the second run).
+- **Cleanup ran.** `pluginkit -r` restored the baseline listing. System logs were not
+  readable from the agent shell.
+- **Untried next steps:**
+  - install the scratch container in `~/Applications` and register it with `lsregister -f`
+    (undo: `lsregister -u`, delete the app, `qlmanage -r`);
+  - or build the extension with Xcode. That adds a build-time dependency (full Xcode, plus an
+    `.xcodeproj` next to SwiftPM), not a runtime one.
+
+Decision: the user parked Quick Look. The scratch spike stays untracked under
+`.build/quick-look-spike-3ff9ae3b-cd48-4a3f-967c-a0d724a497ac/`; its `FINDINGS.md` has the full
+command record.

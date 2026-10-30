@@ -23,8 +23,8 @@ and historical engineering records out of the landing page.
   ([plan](plans/2026-10-30-scroll-anchor-follow-changes.md)) and
   [image auto-refresh](specs/2026-10-30-image-auto-refresh-design.md)
   ([plan](plans/2026-10-30-image-auto-refresh.md)).
-- Post-v1 round, pending: [Quick Look extension](specs/2026-10-30-quick-look-extension-design.md)
-  ([plan](plans/2026-10-30-quick-look-extension.md)), gated on a feasibility spike.
+- Post-v1 round, parked: [Quick Look extension](specs/2026-10-30-quick-look-extension-design.md)
+  ([plan](plans/2026-10-30-quick-look-extension.md)); the spike extension was not discovered by macOS.
 - Post-v1 round, dropped: [mdv CLI](specs/2026-10-30-mdv-cli-design.md); a shell alias covers it.
 - [GitHub preparation plan](plans/2026-10-29-github-preparation.md): focused
   documentation/license cleanup, not authorization to publish or fix the watcher.
