@@ -63,6 +63,42 @@ Each change bumps a generation number. Stale reads and renders are cancelled, an
 a closed session cannot publish. When a read fails, the last good preview stays on
 screen with an "out of date" warning. Recreating the file clears the warning.
 
+## Content-anchored refresh and Follow Changes
+
+The [scroll-anchor design](docs/specs/2026-10-30-scroll-anchor-follow-changes-design.md)
+extends the accepted-commit path, not the native capability transaction. Staging
+assigns each sanitized top-level block a private JS-array key:
+`tagName:FNV-1a(textContent)#occurrence`. FNV-1a hashes UTF-16 code units in one
+linear pass over a single cached `textContent` read per block; keys are never HTML
+attributes or persisted state. Duplicate text is distinguished by occurrence in
+document order; this is a heuristic identity, not a semantic diff.
+
+An accepted commit captures the first old block with `bottom > 0`, then replaces
+the DOM and restores that key to its saved viewport top. If it disappeared, the
+nearest surviving predecessor uses **its own** saved top; otherwise both pixel
+coordinates are clamped to the new bounds. Rejected generations change neither
+the committed keys nor viewport state. For at most one second, image load/error
+events re-apply the final anchor without awaiting decoding or delaying commit.
+Listeners retire on scroll differing from renderer-owned coordinates, wheel/key
+input, fragment navigation, the next accepted commit, or timeout.
+
+Follow Changes compares old/new key sequences. On a refresh, the first changed
+block (last remaining block for a trailing deletion) is centered and highlighted
+for 1.2 seconds only if it is off-screen after anchoring and following is enabled.
+That followed block becomes the late-image anchor. A new accepted commit clears
+the previous highlight; reduced motion uses a static temporary background instead
+of animation. First render never follows.
+
+`AppDelegate` owns the checked View item and the sole persisted Bool,
+`MDViewerFollowChanges` (default false). It updates all open windows and passes the
+value into new windows before `RenderHost.load()`. `RenderHost` retains the Bool
+across reload/invalidation/process recovery, serializes and awaits JS application,
+and re-applies a changed value before publishing initial readiness. Only the
+current shell epoch may release queued rendering, followed by `onReady`; stale
+completions are ignored and setter failures report through `onFailure`. Existing
+recovery callbacks still queue preview work before initialization finishes. No
+document paths, block keys or scroll positions are stored by this preference.
+
 ## Security boundaries
 
 Markdown is treated as hostile.

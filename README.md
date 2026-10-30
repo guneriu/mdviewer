@@ -162,6 +162,7 @@ Optional installation and default-handler selection are separate user decisions:
 | Cmd-O | Open a document |
 | Cmd-R | Reload source and local raster images |
 | Cmd-F | Show native find controls |
+| Cmd-Shift-F | Toggle View → Follow Changes |
 | Cmd-+ or Cmd-= | Zoom in |
 | Cmd-- | Zoom out |
 | Cmd-0 | Reset zoom |
@@ -178,6 +179,14 @@ about **200 ms**, and retries transient failures. It keeps the last good preview
 with a stale warning when reads/renders fail and can recover after recreation.
 Generation guards prevent older work from replacing a newer preview. Observed
 sub-second updates are dated local-disk measurements, not guarantees on all volumes.
+
+Refresh keeps the visible content anchored, even when blocks above it change. If
+the visible block was deleted, a surviving preceding block is used, or the scroll
+position is clamped to the new document bounds. Enable **View → Follow Changes**
+(**⌘⇧F**) to jump to and briefly highlight an off-screen changed block. It is **off
+by default**; the setting is remembered application-wide and applies to existing
+and new viewer windows. The brief highlight respects Reduce Motion. First render,
+explicit heading navigation, find and zoom keep their usual behavior.
 
 **Asset-only changes need Cmd-R.** A valid partly written or empty file may briefly
 display after settling; debounce cannot infer an external writer's intent. An
