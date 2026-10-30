@@ -43,7 +43,7 @@ The existing round-three blocker was reproduced before this planning task:
 | `scripts/verify_m0.py:192` | Raise the outer watcher-runner timeout to accommodate four bounded children. |
 | `TEST_RESULTS.md` | After execution only, record fresh red/green evidence and distinguish isolated checks from unperformed actual-app acceptance. |
 
-**Keep unchanged:** `Sources/MDViewerCore/DirectoryWatcher.swift`, `Sources/MDViewerCore/DocumentLocation.swift`, `Sources/MDViewer/DocumentWindow.swift`, `Sources/MDViewerCore/AssetGateway.swift`, `SPEC.md`, `PLAN.md`, packaging/association declarations, and existing vendored renderer assets.
+**Keep unchanged:** `Sources/MDViewerCore/DirectoryWatcher.swift`, `Sources/MDViewerCore/DocumentLocation.swift`, `Sources/MDViewer/DocumentWindow.swift`, `Sources/MDViewerCore/AssetGateway.swift`, `docs/specs/2026-10-29-mdviewer-v1-design.md`, `docs/plans/2026-10-29-mdviewer-v1.md`, packaging/association declarations, and existing vendored renderer assets.
 
 ## Task 1: Add failing native regressions
 
@@ -354,6 +354,6 @@ Expected: both suites pass including four bounded watcher scenarios, existing re
 - [ ] Debug and release isolated verification pass with recorded timings and unchanged original fixture hashes.
 - [ ] No changes to canonical document identity, image-root policy, no-follow/nonblocking flags, source limits, dependencies, defaults, Git state, or installed applications.
 
-**Contract mapping:** This addresses the `/tmp` blocker in `PLAN.md` M3 and the tested refresh/deletion portions of `SPEC.md` A06/A07. Literal filename coverage contributes to A08. Keeping canonical identity and asset policy unchanged protects A03/A09; it does not replace their wider existing tests. The remainder of A06/A07 and manual product acceptance continue to rely on their existing dedicated evidence and outstanding acceptance work.
+**Contract mapping:** This addresses the `/tmp` blocker in `docs/plans/2026-10-29-mdviewer-v1.md` M3 and the tested refresh/deletion portions of `docs/specs/2026-10-29-mdviewer-v1-design.md` A06/A07. Literal filename coverage contributes to A08. Keeping canonical identity and asset policy unchanged protects A03/A09; it does not replace their wider existing tests. The remainder of A06/A07 and manual product acceptance continue to rely on their existing dedicated evidence and outstanding acceptance work.
 
 **Handoff:** After user approval, execute Tasks 1–4 in order with one writer. Capture the red test before applying Task 2; retain all timeout guards; stop on a new blocker rather than broadening the patch. No implementation or verification commands were executed as part of creating this plan.

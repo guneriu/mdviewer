@@ -7,8 +7,8 @@ and historical engineering records out of the landing page.
 
 ## Project contract and history
 
-- [SPEC.md](../SPEC.md): original product/security requirements and A01–A14 criteria.
-- [PLAN.md](../PLAN.md): original M0–M5 implementation sequence and acceptance gates.
+- [Specification](specs/2026-10-29-mdviewer-v1-design.md): original product/security requirements and A01–A14 criteria.
+- [Implementation plan](plans/2026-10-29-mdviewer-v1.md): original M0–M5 implementation sequence and acceptance gates.
 - [TEST_RESULTS.md](../TEST_RESULTS.md): dated implementation observations, historical
   test counts, unresolved Launch Services caveat and remaining manual acceptance.
   Local `.build/` log paths in that record identify untracked evidence from the

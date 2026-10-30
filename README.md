@@ -225,7 +225,7 @@ regeneration and historical engineering records. The project keeps separate:
 - `Packaging/`: bundle metadata inputs and the [packaging guide](Packaging/README.md).
 - `.build/`: generated apps and local evidence, not source to publish.
 
-The [specification](SPEC.md) and [implementation plan](PLAN.md) retain the original
+The [specification](docs/specs/2026-10-29-mdviewer-v1-design.md) and [implementation plan](docs/plans/2026-10-29-mdviewer-v1.md) retain the original
 contract; [test results](TEST_RESULTS.md) track implementation evidence and remaining
 gates. Keep dependency pins and asset/notices hashes together when changing the
 renderer. Do not equate packaging success with manual acceptance.

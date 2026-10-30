@@ -1,8 +1,8 @@
 # MDViewer — Product and Technical Specification
 
-Status: original v1 product and security contract (2026-10-29), retained for reference. Implementation evidence and incomplete acceptance are tracked in [TEST_RESULTS.md](TEST_RESULTS.md); requirements below are not claims that all scenarios have passed.
+Status: original v1 product and security contract (2026-10-29), retained for reference. Implementation evidence and incomplete acceptance are tracked in [TEST_RESULTS.md](../../TEST_RESULTS.md); requirements below are not claims that all scenarios have passed.
 Project: standalone `mdviewer/` source tree.
-Related document: [Implementation plan](PLAN.md).
+Related document: [Implementation plan](../plans/2026-10-29-mdviewer-v1.md).
 
 ## 1. Purpose and agreed workflow
 
@@ -60,7 +60,7 @@ Recommended architecture (design choice, not a pre-existing implementation):
 - A pinned task-list plugin, with its license and generated disabled checkboxes verified.
 - Bundled DOMPurify for defense-in-depth HTML sanitization.
 - A small bundled highlight.js build for syntax highlighting.
-- Swift Package Manager and explicit .app packaging scripts, subject to the feasibility gate in PLAN.md.
+- Swift Package Manager and explicit .app packaging scripts, subject to the feasibility gate in the implementation plan.
 
 No Electron, Tauri, Node.js server, local HTTP listener, or browser tab is needed at runtime.
 Development may use Node/npm to prepare vendored renderer assets; shipping users must not need Node, npm, or an active internet connection.
