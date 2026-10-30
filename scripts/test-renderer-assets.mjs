@@ -37,6 +37,10 @@ assert.deepEqual((await readdir('Resources/Web')).sort(), ['renderer.js', 'shell
 assert.ok(original.get('Resources/Notices/THIRD_PARTY_NOTICES.md').equals(original.get('THIRD_PARTY_NOTICES.md')));
 const shell = await readFile('Resources/Web/shell.html', 'utf8');
 const css = await readFile('Resources/Web/styles.css', 'utf8');
+const renderer = await readFile('web/renderer.js', 'utf8');
+const blockEntries = renderer.match(/^function blockEntries\(container\) \{[\s\S]*?^\}/m)?.[0];
+assert.ok(blockEntries, 'source-named block identity helper exists');
+assert.doesNotMatch(blockEntries, /setAttribute|dataset/, 'block keys stay private, not in HTML attributes');
 assert.ok(!/(?:src|href)=["']https?:/i.test(shell));
 assert.ok(!/@import|url\(/i.test(css));
 assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\.changed-flash\s*\{\s*animation:\s*none;/,

@@ -238,6 +238,7 @@ extension M0Integration {
         try check(!host.gateway.containsCapability(retainedImage), "successful replacement retires previous committed image capabilities")
         try await testContentAnchors(host, root: root)
         try await testFollowChanges(host, root: root)
+        try await testFollowNavigationFindZoom(host, root: root)
     }
 
     static func testContentAnchors(_ host: RenderHost, root: URL) async throws {
@@ -388,6 +389,36 @@ extension M0Integration {
         let followed = try await js(host, "const n = document.querySelector('#document').lastElementChild, r = n.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight") as? Bool
         try check(followed == true, "late image settles the followed block rather than the pre-follow anchor")
         _ = try await js(host, "window.commitMarkdown = window.followCommit; window.setFollowChanges(false); return true")
+    }
+
+    static func testFollowNavigationFindZoom(_ host: RenderHost, root: URL) async throws {
+        host.setFollowChanges(true)
+        let source = (0..<200).map { "Navigation paragraph \($0)\n\n" }.joined() + "# Target\n\nFind this phrase"
+        try await render(host, source: source, root: root)
+        _ = try await js(host, "scrollTo(0, 0); window.navigationNode = document.querySelector('#document').firstElementChild; return true")
+        let generation = host.generation
+        let blocked = host.blockedNavigations
+        host.scrollToFragment("target")
+        try await waitUntil("Follow Changes fragment visible") {
+            try await js(host, "const n = document.getElementById('user-content-heading-target'), r = n.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight && document.activeElement === n") as? Bool == true
+        }
+        try check(true, "Follow Changes preserves fragment navigation visibility and focus")
+        let found = await withCheckedContinuation { continuation in
+            host.find("Find this phrase") { continuation.resume(returning: $0) }
+        }
+        try check(found, "Follow Changes preserves native WebKit find")
+        host.zoom(by: 1.2)
+        try check(abs(host.webView.pageZoom - 1.2) < 0.001, "Follow Changes preserves page zoom")
+        host.zoom(by: 10)
+        try check(host.webView.pageZoom == 3, "Follow Changes preserves maximum zoom bound")
+        host.zoom(by: 0.01)
+        try check(host.webView.pageZoom == 0.5, "Follow Changes preserves minimum zoom bound")
+        host.resetZoom()
+        let unchanged = try await js(host, "return window.navigationNode === document.querySelector('#document').firstElementChild && Number(document.querySelector('#document').dataset.generation) === generation", arguments: ["generation": generation]) as? Bool
+        try check(host.webView.pageZoom == 1 && host.generation == generation && host.blockedNavigations == blocked && unchanged == true,
+                  "fragment/find/zoom never render or navigate the shell and reset restores scale")
+        host.setFollowChanges(false)
+        _ = try await js(host, "delete window.navigationNode; return true")
     }
 
     static func testLateImageAnchors(_ host: RenderHost, root: URL, original: String) async throws {
