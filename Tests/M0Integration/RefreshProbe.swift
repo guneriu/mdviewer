@@ -69,11 +69,104 @@ extension M0Integration {
         }
         let queuedDOM = try await js(queued, "return document.querySelector('h1')?.textContent === 'Queued'") as? Bool
         try check(queuedDOM == true, "reload before shell readiness is queued and rendered")
+        try await testImageOnlyRefresh(resources: resources, fixtureRoot: fixtureRoot)
         try await testCommittedAssetPaths(resources: resources, root: root)
         try await testRenderTransactions(host, root: root)
         try await testFollowPreferenceLifecycle(resources: resources, root: root)
         try await testFollowPreferenceRace(resources: resources, root: root, recoverWhileHeld: false)
         try await testFollowPreferenceRace(resources: resources, root: root, recoverWhileHeld: true)
+    }
+
+    static func testImageOnlyRefresh(resources: URL, fixtureRoot: URL) async throws {
+        let root = fixtureRoot.appendingPathComponent("image-refresh-\(UUID().uuidString)")
+        let fm = FileManager.default
+        let directory = root.appendingPathComponent("img")
+        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+        let image = directory.appendingPathComponent("a.png")
+        let missing = directory.appendingPathComponent("new.png")
+        let file = root.appendingPathComponent("images.md")
+        let sensitive = try root.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames == true
+        let reference = sensitive ? "new.png" : "New.png"
+        if sensitive { print("SKIP case-insensitive WebKit image creation: case-sensitive fixture volume") }
+        let source = "![a](img/a.png) ![missing](img/\(reference))"
+        try Data(source.utf8).write(to: file)
+        try imageFixture(width: 1).write(to: image)
+        let host = try RenderHost(resourceDirectory: resources.appendingPathComponent("Web"))
+        var renders = 0
+        let location = try DocumentLocation(file)
+        let refresh = DocumentRefresh(location: location, invalidate: { [weak host] in host?.invalidate() ?? 0 }) { [weak host] source, version in
+            guard let host else { throw CancellationError() }
+            _ = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any, Error>) in
+                host.render(source: source, root: location.assetRoot, document: location.canonicalURL, generation: version) {
+                    continuation.resume(with: $0)
+                }
+            }
+            renders += 1
+        }
+        host.onAssetPaths = { [weak refresh] paths, version in refresh?.updateAssetPaths(paths, generation: version) }
+        defer { refresh.close(); host.close() }
+        host.setFollowChanges(true)
+        host.load()
+        try refresh.start()
+        try await waitUntil("initial image-only preview decoded") {
+            guard renders == 1 else { return false }
+            return try await js(host, "const i = document.querySelector('#document img[alt=a]'); return !!i && i.complete && i.naturalWidth === 1") as? Bool == true
+        }
+        try await Task.sleep(nanoseconds: 500_000_000)
+        func change(_ label: String, alt: String = "a", width: Int?, _ mutate: () throws -> Void) async throws {
+            let before = renders
+            let oldURL = try await js(host, "return document.querySelector('#document img[alt=" + alt + "]')?.src || ''") as! String
+            let started = Date()
+            try mutate()
+            try await waitUntil(label) {
+                guard renders > before else { return false }
+                return try await js(host, """
+                    const i = document.querySelector('#document img[alt="' + alt + '"]');
+                    if (width === null) return !i && [...document.querySelectorAll('#document .blocked-image')].some(n => n.textContent === 'Blocked or missing image: ' + alt);
+                    return !!i && i.complete && i.naturalWidth === width && i.src !== oldURL;
+                    """, arguments: ["alt": alt, "width": width.map { $0 as Any } ?? NSNull(), "oldURL": oldURL]) as? Bool == true
+            }
+            let elapsed = Date().timeIntervalSince(started)
+            print("TIMING WebKit \(label): \(String(format: "%.3f", elapsed)) s")
+            try check(elapsed < 1, "\(label) decodes or blocks with a fresh capability within 1 second")
+            try await Task.sleep(nanoseconds: 500_000_000)
+            try check(renders == before + 1, "\(label) settles at exactly one completed browser render")
+        }
+        try await change("image-only overwrite", width: 2) { try imageFixture(width: 2).write(to: image) }
+        try await change("image-only delete", width: nil) { try fm.removeItem(at: image) }
+        try await change("image-only recreate", width: 3) { try imageFixture(width: 3).write(to: image) }
+        try await change("missing case-aware image creation", alt: "missing", width: 4) { try imageFixture(width: 4).write(to: missing) }
+        try await change("zero-byte image rejection", width: nil) { try Data().write(to: image) }
+        try await change("zero-byte image recovery", width: 5) { try imageFixture(width: 5).write(to: image) }
+        try await change("invalid mid-write image rejection", width: nil) { try Data("incomplete image".utf8).write(to: image) }
+        try await change("invalid mid-write image recovery", width: 6) { try imageFixture(width: 6).write(to: image) }
+        try await change("over-budget image rejection", width: nil) {
+            let handle = try FileHandle(forWritingTo: image)
+            defer { try? handle.close() }
+            try handle.truncate(atOffset: 26 * 1024 * 1024)
+        }
+        try await change("over-budget image recovery", width: 7) { try imageFixture(width: 7).write(to: image) }
+        try await change("atomic image-only replacement", width: 8) { try imageFixture(width: 8).write(to: image, options: .atomic) }
+        let prepared = root.appendingPathComponent("prepared-\(UUID().uuidString)")
+        try fm.createDirectory(at: prepared, withIntermediateDirectories: true)
+        try imageFixture(width: 9).write(to: prepared.appendingPathComponent("a.png"))
+        try imageFixture(width: 4).write(to: prepared.appendingPathComponent(reference))
+        try await Task.sleep(nanoseconds: 500_000_000)
+        try await change("whole-directory image-only replacement", width: 9) {
+            try fm.moveItem(at: directory, to: root.appendingPathComponent("old-img"))
+            try fm.moveItem(at: prepared, to: directory)
+        }
+        let unchangedSource = try location.read()
+        try check(unchangedSource == source, "image-only browser operations never change the Markdown source")
+        _ = try await js(host, "window.prepareMarkdown = () => new Promise(resolve => window.releaseImageClose = () => resolve({images: [], links: []})); return true")
+        try imageFixture(width: 10).write(to: image)
+        try await waitUntil("asset event rendering before close") { try await js(host, "return typeof window.releaseImageClose === 'function'") as? Bool == true }
+        let before = renders, completed = refresh.completedGeneration
+        refresh.close(); host.close()
+        _ = try await js(host, "window.releaseImageClose(); return true")
+        try await Task.sleep(nanoseconds: 500_000_000)
+        try check(renders == before && refresh.completedGeneration == completed, "close blocks queued image render completion and publication")
     }
 
     static func testCommittedAssetPaths(resources: URL, root: URL) async throws {
@@ -532,7 +625,7 @@ extension M0Integration {
             if input == "none" {
                 try check(correction > 100, "without input, late-image error re-anchors the viewport by more than 100 px")
             } else {
-                try check(correction < 5, "\(input) cancels late-image viewport corrections")
+                try check(correction < 5, "\(input) cancels late-image viewport corrections (\(correction) px)")
             }
         }
         _ = try await js(host, """
