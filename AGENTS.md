@@ -8,6 +8,7 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md) first. The product contract is
 - Specs and designs go in `docs/specs/YYYY-MM-DD-<topic>-design.md`.
 - Implementation plans go in `docs/plans/YYYY-MM-DD-<feature>.md`, with checkbox steps and TDD order (failing test → fix → passing test → commit).
 - Record dated verification results in `TEST_RESULTS.md`. Scope every claim: an isolated probe passing is not proof that the actual app or Launch Services works.
+- When a rendering, image or link feature changes, update `examples/showcase/showcase.md` with a section stating the expected result (see `examples/README.md`). Automated regression fixtures stay in `Fixtures/`.
 - Keep `README.md` user-facing (install, use, limitations) and `docs/README.md` developer-facing.
 
 ## Commands

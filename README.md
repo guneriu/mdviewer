@@ -32,6 +32,10 @@ Open with → MDViewer → Change All**. Updating uses `--install --replace` aft
 quitting the app. The sections below explain each step, its safety guards, and
 how to uninstall.
 
+To see every supported feature at once, open
+[`examples/showcase/showcase.md`](examples/showcase/showcase.md). It doubles as a manual
+test checklist; see [`examples/README.md`](examples/README.md).
+
 ## What it displays
 
 - Headings, paragraphs, emphasis, links, ordered/unordered lists, blockquotes,
