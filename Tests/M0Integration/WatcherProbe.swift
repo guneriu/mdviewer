@@ -36,7 +36,7 @@ extension M0Integration {
             try imageFixture(width: 1).write(to: outside.appendingPathComponent("target.png"))
             try fm.createSymbolicLink(at: imageDirectory.appendingPathComponent("escape.png"), withDestinationURL: outside.appendingPathComponent("target.png"))
             references += ["img/escape.png", "img/café.png"]
-            let sensitive = try root.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames == true
+            let sensitive = try root.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames != false
             if !sensitive { references[1] = "img/New.png" }
             else { print("SKIP case-insensitive real event: case-sensitive fixture volume (both modes covered by native seam)") }
             try imageFixture(width: 1).write(to: imageDirectory.appendingPathComponent("café.png"))

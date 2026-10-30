@@ -86,7 +86,7 @@ extension M0Integration {
         let image = directory.appendingPathComponent("a.png")
         let missing = directory.appendingPathComponent("new.png")
         let file = root.appendingPathComponent("images.md")
-        let sensitive = try root.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames == true
+        let sensitive = try root.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames != false
         let reference = sensitive ? "new.png" : "New.png"
         if sensitive { print("SKIP case-insensitive WebKit image creation: case-sensitive fixture volume") }
         let source = "![a](img/a.png) ![missing](img/\(reference))"

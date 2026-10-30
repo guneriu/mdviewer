@@ -37,6 +37,9 @@
 - [x] P2b: Red missing teardown-spy seam → internal real-stream C-operation spies →
   green ordered exactly-once stop/invalidate/release and zero live streams on
   explicit stop, deinit and session close while retaining the watcher object.
+- [x] P2c: Red source-expression check → both native/WebKit probes use `!= false`
+  for unknown-volume sensitivity, matching product behavior → green check and
+  final real-event/debug/release suites.
 
 ## Source reconciliation and invariants
 
