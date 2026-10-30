@@ -67,8 +67,9 @@ filesystem I/O is performed in the event callback.
   a missing image triggers a refresh. Keep contained regular files that fail only
   content, format, decode or budget checks (including zero-size, mid-write and
   over-budget files); a later valid write must still trigger a retry.
-- Exclude structurally unsafe references (scheme/invalid local path, traversal,
-  symlink escape) and non-regular files. An existing path must pass the same
+- Standardize local paths before containment checks, preserving v1 in-root `..`
+  references such as `img/../a.png`. Exclude structurally unsafe references
+  (scheme/invalid local path, escaping traversal or symlink escape) and non-regular files. An existing path must pass the same
   no-follow descriptor/type/containment checks before being recorded; failures
   that cannot establish this safety are not candidates. Watching a rejected image
   grants **no access**, resource or capability: all rendering checks still apply.

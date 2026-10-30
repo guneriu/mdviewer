@@ -5,6 +5,29 @@ import Testing
 @testable import MDViewerCore
 
 struct AssetPolicyTests {
+    @Test func inRootTraversalRendersButEscapesAreNotRefreshCandidates() throws {
+        let fm = FileManager.default
+        let fixture = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let root = fixture.appendingPathComponent("root")
+        try fm.createDirectory(at: root.appendingPathComponent("img"), withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: fixture) }
+        let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+afo8AAAAASUVORK5CYII=")!
+        try png.write(to: root.appendingPathComponent("a.png"))
+        try png.write(to: fixture.appendingPathComponent("outside.png"))
+        let pointer = try #require(realpath(root.path, nil)); defer { free(pointer) }
+        let physical = URL(fileURLWithPath: String(cString: pointer))
+        let accepted = AssetPolicy.images(references: ["img/../a.png"], root: root)
+        #expect(accepted.references["img/../a.png"] != nil && accepted.resources.count == 1)
+        #expect(accepted.resolvedPaths == [physical.appendingPathComponent("a.png").path])
+        for path in ["../outside.png", "img/../../outside.png", "../missing.png", "img/../../missing.png"] {
+            let rejected = AssetPolicy.images(references: [path], root: root)
+            #expect(rejected.resources.isEmpty && rejected.references.isEmpty && rejected.resolvedPaths.isEmpty)
+        }
+        let missing = AssetPolicy.images(references: ["img/../missing.png"], root: root)
+        #expect(missing.resources.isEmpty)
+        #expect(missing.resolvedPaths == [physical.appendingPathComponent("missing.png").path])
+    }
+
     @Test func physicalRefreshCandidatesIncludeRejectedAndMissingButNotUnsafePaths() throws {
         let root = URL(fileURLWithPath: "/tmp").appendingPathComponent("MDViewer-assets-\(UUID().uuidString)")
         let fm = FileManager.default

@@ -68,7 +68,7 @@ public enum AssetPolicy {
               !path.isEmpty, !path.hasPrefix("/"), !path.contains("\\"), !path.contains("\0") else {
             throw ViewerError.forbiddenAsset
         }
-        guard !path.split(separator: "/").contains(".."), let rootPointer = realpath(root.path, nil) else {
+        guard let rootPointer = realpath(root.path, nil) else {
             throw ViewerError.forbiddenAsset
         }
         defer { free(rootPointer) }
