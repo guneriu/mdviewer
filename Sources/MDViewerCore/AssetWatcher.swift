@@ -2,6 +2,13 @@ import CoreServices
 import Darwin
 import Foundation
 
+/// Internal injection seam verifies every C teardown operation against real streams.
+internal struct AssetStreamOperations {
+    var stop: (FSEventStreamRef) -> Void = { FSEventStreamStop($0) }
+    var invalidate: (FSEventStreamRef) -> Void = { FSEventStreamInvalidate($0) }
+    var release: (FSEventStreamRef) -> Void = { FSEventStreamRelease($0) }
+}
+
 private final class AssetEventContext {
     var receive: (([String], [FSEventStreamEventFlags]) -> Void)?
 }
@@ -10,14 +17,17 @@ private final class AssetEventContext {
 private final class AssetEventStream {
     let context = AssetEventContext()
     var stream: FSEventStreamRef?
+    private let operations: AssetStreamOperations
+
+    init(operations: AssetStreamOperations) { self.operations = operations }
 
     func stop() {
         context.receive = nil
         guard let stream else { return }
         self.stream = nil
-        FSEventStreamStop(stream)
-        FSEventStreamInvalidate(stream)
-        FSEventStreamRelease(stream)
+        operations.stop(stream)
+        operations.invalidate(stream)
+        operations.release(stream)
     }
     deinit { stop() }
 }
@@ -25,7 +35,7 @@ private final class AssetEventStream {
 /// A trigger-only stream: event paths are matched in memory, never opened or resolved.
 @MainActor
 public final class AssetWatcher {
-    private let lifetime = AssetEventStream()
+    private let lifetime: AssetEventStream
     private let caseSensitive: Bool
     private let rootPath: String
     private let documentPath: String
@@ -41,7 +51,8 @@ public final class AssetWatcher {
         try self.init(root: root, document: document, caseSensitive: sensitive, onChange: onChange)
     }
 
-    internal init(root: URL, document: URL, caseSensitive: Bool, onChange: @escaping () -> Void) throws {
+    internal init(root: URL, document: URL, caseSensitive: Bool,
+                  streamOperations: AssetStreamOperations = AssetStreamOperations(), onChange: @escaping () -> Void) throws {
         guard let pointer = realpath(root.path, nil) else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         defer { free(pointer) }
         let physicalRoot = String(cString: pointer)
@@ -51,6 +62,7 @@ public final class AssetWatcher {
         } else {
             source = URL(fileURLWithPath: physicalRoot).appendingPathComponent(document.lastPathComponent).path
         }
+        self.lifetime = AssetEventStream(operations: streamOperations)
         self.caseSensitive = caseSensitive
         self.rootPath = Self.normalize(physicalRoot, caseSensitive: caseSensitive)
         self.documentPath = Self.normalize(source, caseSensitive: caseSensitive)

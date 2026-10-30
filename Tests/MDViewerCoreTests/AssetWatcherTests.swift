@@ -101,11 +101,26 @@ struct AssetWatcherTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
+        var calls: [String] = []
+        var liveStreams = 0
+        let operations = AssetStreamOperations(
+            stop: { calls.append("stop"); FSEventStreamStop($0) },
+            invalidate: { calls.append("invalidate"); FSEventStreamInvalidate($0) },
+            release: { calls.append("release"); liveStreams -= 1; FSEventStreamRelease($0) })
         weak var weakWatcher: AssetWatcher?
         do {
-            let watcher = try AssetWatcher(root: root, document: root.appendingPathComponent("doc.md")) {}
+            let watcher = try AssetWatcher(root: root, document: root.appendingPathComponent("doc.md"),
+                caseSensitive: true, streamOperations: operations) {}
+            liveStreams += 1
             weakWatcher = watcher
         }
         #expect(weakWatcher == nil)
+        #expect(calls == ["stop", "invalidate", "release"] && liveStreams == 0)
+        let watcher = try AssetWatcher(root: root, document: root.appendingPathComponent("doc.md"),
+            caseSensitive: true, streamOperations: operations) {}
+        liveStreams += 1
+        watcher.stop(); watcher.stop()
+        #expect(calls == ["stop", "invalidate", "release", "stop", "invalidate", "release"])
+        #expect(liveStreams == 0)
     }
 }

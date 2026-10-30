@@ -1,3 +1,4 @@
+import CoreServices
 import Foundation
 import Testing
 @testable import MDViewerCore
@@ -70,11 +71,19 @@ struct DocumentRefreshTests {
         try Data("unchanged".utf8).write(to: file)
         let allowed = root.resolvingSymlinksInPath().appendingPathComponent("allowed.png").path
         let unrelated = root.resolvingSymlinksInPath().appendingPathComponent("unrelated.png").path
+        var streamCalls: [String] = []
+        var liveStreams = 0
+        let operations = AssetStreamOperations(
+            stop: { streamCalls.append("stop"); FSEventStreamStop($0) },
+            invalidate: { streamCalls.append("invalidate"); FSEventStreamInvalidate($0) },
+            release: { streamCalls.append("release"); liveStreams -= 1; FSEventStreamRelease($0) })
         var generation = 0, renders = 0
         var watcher: AssetWatcher?
         let refresh = DocumentRefresh(location: try DocumentLocation(file), invalidate: { generation += 1; return generation },
             assetWatcherFactory: { root, document, callback in
-                let created = try AssetWatcher(root: root, document: document, onChange: callback)
+                let created = try AssetWatcher(root: root, document: document, caseSensitive: true,
+                    streamOperations: operations, onChange: callback)
+                liveStreams += 1
                 watcher = created; return created
             }, render: { _, _ in renders += 1 })
         defer { refresh.close() }
@@ -85,8 +94,11 @@ struct DocumentRefreshTests {
         refresh.updateAssetPaths([unrelated], generation: current - 1)
         watcher?.receive(paths: [allowed], flags: [0])
         try await wait { refresh.completedGeneration > current }
-        #expect(renders == 2)
-        refresh.close()
+        #expect(renders == 2 && liveStreams == 1)
+        refresh.close(); refresh.close()
+        // Keep the watcher alive: close must release the stream without waiting for deinit.
+        #expect(watcher != nil && liveStreams == 0)
+        #expect(streamCalls == ["stop", "invalidate", "release"])
         let completed = refresh.completedGeneration
         refresh.updateAssetPaths([allowed], generation: generation)
         watcher?.receive(paths: [allowed], flags: [0])

@@ -34,6 +34,9 @@
 - [x] P2a: Red first-render/new-reference event-loss tests → one-bit in-flight
   recording and debounced replay after current nonempty publication → green.
   Clear pending state on failure/cancellation/empty commit/stop; never read event paths.
+- [x] P2b: Red missing teardown-spy seam → internal real-stream C-operation spies →
+  green ordered exactly-once stop/invalidate/release and zero live streams on
+  explicit stop, deinit and session close while retaining the watcher object.
 
 ## Source reconciliation and invariants
 

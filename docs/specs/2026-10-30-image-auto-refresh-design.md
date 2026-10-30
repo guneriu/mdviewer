@@ -137,6 +137,8 @@ filesystem I/O is performed in the event callback.
 - B3: Changing an unreferenced file, a symlink-escape target, or a file outside the
   root triggers no render (completed generation unchanged after 500 ms).
 - B4: Works for documents directly under `/tmp` (physical-path matching).
-- B5: After `close()`, image changes publish nothing. Stream teardown is verified by
-  the closed-session test.
+- B5: After `close()`, image changes publish nothing. Internal operation spies wrap
+  real C stream calls and verify Stop → Invalidate → Release exactly once on stop,
+  deinit and session close, with the live-stream count returning to zero even when
+  the watcher object is retained after close.
 - B6: Existing native, watcher, WebKit, and hardening suites pass unchanged.
