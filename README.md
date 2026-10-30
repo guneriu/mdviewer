@@ -6,10 +6,31 @@ system WebKit, and refreshes the preview when the source changes. It is not an
 editor, browser service, or Node runtime; no Pi process is needed to use it.
 
 **Status:** local build and automated verification evidence is available, but this
-is not a notarized or fully accepted release. Automatic refresh has a known
-failure for documents directly inside `/tmp` and other symlink-parent directories.
-See [limitations](#limitations-and-security) and the
+is not a notarized or fully accepted release. Automatic refresh for documents
+directly inside `/tmp` (a symlink parent) was fixed on 2026-10-30. See
+[limitations](#limitations-and-security) and the
 [historical acceptance results](TEST_RESULTS.md) for unresolved checks.
+
+## Quickstart
+
+Prerequisites: macOS 13+ (macOS 14+ to run the tests), a Swift 6 toolchain
+(`xcode-select --install` is enough; full Xcode is optional), Python 3, and the
+standard `codesign`/`plutil` tools. You need Node 22+ only to regenerate renderer
+assets.
+
+```sh
+git clone <repo-url> mdviewer && cd mdviewer
+CONFIGURATION=release bash scripts/package.sh   # → .build/release-package/MDViewer.app
+bash scripts/test-swift.sh                      # optional: native unit tests
+bash scripts/install.sh --dry-run               # shows what would be installed
+bash scripts/install.sh --install               # copies to ~/Applications/MDViewer.app
+open -a ~/Applications/MDViewer.app README.md   # first launch
+```
+
+To make it the default viewer, select a `.md` file in Finder → **Get Info →
+Open with → MDViewer → Change All**. Updating uses `--install --replace` after
+quitting the app. The sections below explain each step, its safety guards, and
+how to uninstall.
 
 ## What it displays
 
@@ -169,12 +190,12 @@ symlink. Parent-directory replacement is not automatically rebound.
   then reopen the intended bundle explicitly. An on-disk executable and a running
   image can differ. A previous refresh incident recovered after reopening, but its
   exact old internal failure was not established; it is not proof of a source bug.
-- **No automatic refresh directly in `/tmp`:** the current parent watcher uses
-  `O_NOFOLLOW` and rejects that symlink parent with `ELOOP`. This also matters for
-  analogous `/var` and `/etc` parents. Use Cmd-R or choose a regular, non-symlink
-  parent directory for a new document. The
-  [separate blocker plan](docs/plans/2026-10-29-tmp-parent-watcher-blocker.md)
-  describes a proposed fix; it has not been implemented by this cleanup.
+- **No automatic refresh in a symlinked parent directory:** fixed for `/tmp`
+  (and analogous `/var`, `/etc` parents) on 2026-10-30. The parent watcher now
+  resolves the physical directory with `realpath` while keeping `O_NOFOLLOW` for
+  the final component. See the
+  [blocker plan](docs/plans/2026-10-29-tmp-parent-watcher-blocker.md). If an older
+  build still misbehaves, rebuild, reinstall, or press Cmd-R.
 - **Image placeholder:** check the format, document-relative containment and
   resource budgets below. Broader directories and remote images have no opt-in.
 - **Stale warning:** check existence, permissions, encoding and size, then retry
@@ -216,6 +237,8 @@ no historical count represents a fresh test run by this documentation cleanup.
 
 ## Development and project documents
 
+[Architecture](ARCHITECTURE.md) explains modules, data flow and security boundaries;
+[AGENTS.md](AGENTS.md) holds contributor and coding-agent rules. The
 [Development and evidence index](docs/README.md) covers check entrypoints, renderer
 regeneration and historical engineering records. The project keeps separate:
 
